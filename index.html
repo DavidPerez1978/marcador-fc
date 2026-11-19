@@ -81,6 +81,7 @@ label{display:block;color:var(--muted);font-size:13px}
 .stat-row:last-child{border-bottom:0}
 .sync-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);margin-right:5px}
 .sync-dot.online{background:var(--green);box-shadow:0 0 8px var(--green)}
+.footer-actions{display:flex;justify-content:flex-end;margin-top:20px}
 @media(max-width:650px){
   .actiongrid{grid-template-columns:1fr 1fr}
   .score-controls,.stats-grid{grid-template-columns:1fr}
@@ -114,15 +115,14 @@ label{display:block;color:var(--muted);font-size:13px}
       </div>
 
       <div id="loginForm">
-        <label>Correo electrónico</label>
-        <input id="loginEmail" type="email" placeholder="ejemplo@correo.com" autocomplete="email">
+        <label>Usuario o correo electrónico</label>
+        <input id="loginEmail" type="text" placeholder="DavidPR" autocomplete="username">
         <label>Contraseña</label>
         <div class="pass-wrap">
           <input id="loginPass" type="password" placeholder="Contraseña" autocomplete="current-password">
           <button type="button" class="eye-btn" data-toggle-pass="loginPass" aria-label="Mostrar u ocultar contraseña"></button>
         </div>
         <button id="loginBtn" style="width:100%">Entrar</button>
-        <p class="hint">Demo por defecto: <b>admin@marcador.fc</b> · contraseña <b>admin123</b>.</p>
       </div>
 
       <div id="requestForm" class="hidden">
@@ -151,8 +151,8 @@ label{display:block;color:var(--muted);font-size:13px}
   <section id="app" class="hidden">
     <div class="row" style="justify-content:space-between;margin-bottom:17px">
       <div>
-        <h1>Panel de partidos</h1>
-        <p class="muted">Control del encuentro y seguimiento en directo.</p>
+        <h1 id="panelTitle">Nuestro equipo</h1>
+        <p class="muted" id="panelSubtitle">Seguimiento en directo</p>
       </div>
       <span id="rolePill" class="pill" style="flex:0 0 auto">ADMINISTRADOR</span>
     </div>
@@ -259,7 +259,6 @@ label{display:block;color:var(--muted);font-size:13px}
           </div>
         </div>
         <button id="prepareMatch">Guardar y preparar partido</button>
-        <p class="hint">El cronómetro empieza en 00:00 y cuenta de forma exacta incluso si cambias de aplicación o bloqueas el móvil.</p>
       </div>
     </section>
 
@@ -333,6 +332,10 @@ label{display:block;color:var(--muted);font-size:13px}
         <div class="stats-grid" id="seasonStats"></div>
       </div>
     </section>
+
+    <div class="footer-actions admin-only" id="bottomActions">
+      <button id="clearActiveMatchBtn" class="danger">Limpiar partido activo</button>
+    </div>
   </section>
 </main>
 
@@ -364,6 +367,10 @@ label{display:block;color:var(--muted);font-size:13px}
 const $=id=>document.getElementById(id);
 const STORAGE_KEY="marcadorFC_v5";
 const DEFAULT_FB_URL="https://temporizador-real-default-rtdb.firebaseio.com";
+const MAIN_ADMIN_USER="DavidPR";
+const MAIN_ADMIN_EMAIL="davidpr@marcador.fc";
+const LEGACY_ADMIN_EMAILS=["davidperez@elgofondedavid.com","admin@marcador.fc"];
+const MAIN_ADMIN_PASS="DPR123";
 
 const EYE_OPEN=`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
 const EYE_CLOSED=`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
@@ -378,15 +385,31 @@ document.querySelectorAll("[data-toggle-pass]").forEach(btn=>{
   };
 });
 
+function isMainAdminIdentifier(val){
+  const clean=String(val||"").trim().toLowerCase();
+  return clean===MAIN_ADMIN_USER.toLowerCase() || clean===MAIN_ADMIN_EMAIL.toLowerCase() || LEGACY_ADMIN_EMAILS.includes(clean);
+}
+
 function fallbackUserName(email, explicitName){
   if(explicitName && String(explicitName).trim()) return String(explicitName).trim();
   if(!email) return "Usuario";
-  if(email.toLowerCase()==="admin@marcador.fc") return "Administrador";
+  if(isMainAdminIdentifier(email)) return MAIN_ADMIN_USER;
   return email.split("@")[0];
 }
 
+function getMainAdminUser(){
+  return {
+    name:MAIN_ADMIN_USER,
+    username:MAIN_ADMIN_USER,
+    email:MAIN_ADMIN_EMAIL,
+    password:MAIN_ADMIN_PASS,
+    role:"admin",
+    approved:true
+  };
+}
+
 let db={
-  users:[{name:"Administrador",email:"admin@marcador.fc",password:"admin123",role:"admin",approved:true}],
+  users:[getMainAdminUser()],
   requests:[],
   home:"Nuestro equipo",
   players:["Jugador 1","Jugador 2","Jugador 3","Jugador 4","Jugador 5"],
@@ -408,21 +431,31 @@ let db={
   updatedAt:0
 };
 
+function normalizeUsers(list){
+  const mapped=(Array.isArray(list)?list:[]).map(u=>{
+    const rawId=u.username||u.email||"";
+    const mainAdmin=isMainAdminIdentifier(rawId) || isMainAdminIdentifier(u.email) || isMainAdminIdentifier(u.name);
+    if(mainAdmin) return getMainAdminUser();
+    const em=u.email||(rawId.includes("@")?rawId:rawId+"@marcador.fc");
+    return {
+      name:fallbackUserName(em, u.name),
+      username:u.username||(em?em.split("@")[0]:"Usuario"),
+      email:em,
+      password:u.password,
+      role:u.role==="admin"?"admin":"viewer",
+      approved:u.approved!==false
+    };
+  });
+  const hasMain=mapped.some(u=>u.email.toLowerCase()===MAIN_ADMIN_EMAIL.toLowerCase() || (u.username||"").toLowerCase()===MAIN_ADMIN_USER.toLowerCase());
+  if(!hasMain) mapped.unshift(getMainAdminUser());
+  return mapped;
+}
+
 try{
   let saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||localStorage.getItem("marcadorFC_v2"));
   if(saved){
     db={...db,...saved};
-    db.users=(db.users||[]).map(u=>{
-      const em=u.email||(u.username==="admin"?"admin@marcador.fc":u.username+"@marcador.fc");
-      return {
-        name:fallbackUserName(em, u.name),
-        email:em,
-        password:u.password,
-        role:u.role==="admin"?"admin":"viewer",
-        approved:u.approved!==false
-      };
-    });
-    if(!db.users.length)db.users=[{name:"Administrador",email:"admin@marcador.fc",password:"admin123",role:"admin",approved:true}];
+    db.users=normalizeUsers(db.users);
     if(typeof saved.elapsed==="number" && saved.baseElapsed===undefined) db.baseElapsed=saved.elapsed;
   }
 }catch(e){}
@@ -503,7 +536,7 @@ function connectFirebaseStream(){
       if((remote.updatedAt||0) > (db.updatedAt||0)){
         isSyncingRemote=true;
         db={...db,...remote};
-        db.users=Array.isArray(db.users)?db.users.map(u=>({...u,name:fallbackUserName(u.email,u.name)})):[];
+        db.users=normalizeUsers(db.users);
         db.requests=Array.isArray(db.requests)?db.requests:[];
         db.players=Array.isArray(db.players)?db.players:[];
         db.onField=Array.isArray(db.onField)?db.onField:[];
@@ -512,7 +545,7 @@ function connectFirebaseStream(){
         db.history=Array.isArray(db.history)?db.history:[];
         localStorage.setItem(STORAGE_KEY,JSON.stringify(db));
         if(me){
-          const updatedMe=db.users.find(u=>u.email.toLowerCase()===me.email.toLowerCase());
+          const updatedMe=db.users.find(u=>u.email.toLowerCase()===me.email.toLowerCase() || (u.username||"").toLowerCase()===(me.username||"").toLowerCase());
           if(!updatedMe){$("logout").onclick();return;}
           me=updatedMe;
           applyRoleUI();
@@ -599,6 +632,26 @@ function stopClock(){
   persist();
 }
 
+function clearActiveMatchData(){
+  if(ticker){
+    clearInterval(ticker);
+    ticker=null;
+  }
+  db.period=1;
+  db.baseElapsed=0;
+  db.startedAt=null;
+  db.running=false;
+  db.phase=db.away ? "ready" : "pending";
+  db.homeScore=0;
+  db.awayScore=0;
+  db.onField=[];
+  db.playerMinutes={};
+  db.goals=[];
+  db.timeline=[];
+  persist();
+  render();
+}
+
 // AUTENTICACIÓN
 function setAuth(tab){
   document.querySelectorAll("[data-auth]").forEach(b=>b.classList.toggle("active",b.dataset.auth===tab));
@@ -611,10 +664,16 @@ function authMsg(t,bad=false){$("authMsg").innerHTML='<div class="notice '+(bad?
 function isValidEmail(e){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)}
 
 $("loginBtn").onclick=()=>{
-  const email=$("loginEmail").value.trim().toLowerCase();
+  const idInput=$("loginEmail").value.trim().toLowerCase();
   const pass=$("loginPass").value;
-  const u=db.users.find(x=>x.email.toLowerCase()===email && x.password===pass && x.approved);
-  if(!u) return authMsg("Correo o contraseña incorrectos, o cuenta pendiente de aprobación.",true);
+  if(isMainAdminIdentifier(idInput) && pass===MAIN_ADMIN_PASS){
+    db.users=normalizeUsers(db.users);
+    me=db.users.find(u=>u.email.toLowerCase()===MAIN_ADMIN_EMAIL.toLowerCase()) || getMainAdminUser();
+    enter();
+    return;
+  }
+  const u=db.users.find(x=>((x.email && x.email.toLowerCase()===idInput) || (x.username && x.username.toLowerCase()===idInput)) && x.password===pass && x.approved);
+  if(!u) return authMsg("Usuario o contraseña incorrectos, o cuenta pendiente de aprobación.",true);
   me=u;
   enter();
 };
@@ -645,7 +704,7 @@ function switchView(viewName){
 
 function applyRoleUI(){
   const admin=isAdmin();
-  $("who").textContent=fallbackUserName(me.email, me.name);
+  $("who").textContent=me.username || fallbackUserName(me.email, me.name);
   $("rolePill").textContent=admin?"ADMINISTRADOR":"USUARIO";
   document.querySelectorAll(".admin-only").forEach(el=>el.classList.toggle("hidden",!admin));
   const activeTab=document.querySelector("[data-view].active");
@@ -682,6 +741,9 @@ function render(){
     $("usersTabBtn").classList.toggle("alert-tab", hasPendingRequests);
     $("usersTabBtn").textContent=hasPendingRequests ? `Usuarios (${db.requests.length})` : "Usuarios";
   }
+
+  $("panelTitle").textContent=db.home || "Nuestro equipo";
+  $("panelSubtitle").textContent="Seguimiento en directo";
 
   $("homeName").textContent=db.home;
   $("awayName").textContent=db.away||"Equipo visitante";
@@ -744,16 +806,20 @@ function render(){
   ).join(""):'<span class="muted">No hay solicitudes pendientes.</span>';
 
   $("usersList").innerHTML=db.users.map((u,i)=>{
-    const isSelf=me && u.email.toLowerCase()===me.email.toLowerCase();
-    const displayName=fallbackUserName(u.email, u.name);
+    const isSelf=me && (u.email.toLowerCase()===me.email.toLowerCase() || (u.username||"").toLowerCase()===(me.username||"").toLowerCase());
+    const isMainAdmin=isMainAdminIdentifier(u.email) || isMainAdminIdentifier(u.username);
+    const displayName=isMainAdmin ? MAIN_ADMIN_USER : fallbackUserName(u.email, u.name);
+    const subtitle=isMainAdmin
+      ? `Usuario: ${MAIN_ADMIN_USER} · Permiso: Administrador`
+      : `${u.email} · Permiso: ${u.role==="admin"?"Administrador":"Usuario"}`;
     return '<div class="item">'+
-      '<span><b>'+esc(displayName)+'</b> '+(isSelf?'<span class="pill green">TÚ</span>':'')+'<br><small>'+esc(u.email)+' · Permiso: '+(u.role==="admin"?"Administrador":"Usuario")+'</small></span>'+
+      '<span><b>'+esc(displayName)+'</b> '+(isSelf?'<span class="pill green">TÚ</span>':'')+'<br><small>'+esc(subtitle)+'</small></span>'+
       '<span class="row" style="flex:0 0 auto;flex-wrap:nowrap">'+
-        '<select data-user-role="'+i+'" style="margin:0;padding:7px 10px;width:auto" '+(isSelf?'disabled title="No puedes cambiar tu propio rol"':'')+'>'+
+        '<select data-user-role="'+i+'" style="margin:0;padding:7px 10px;width:auto" '+(isSelf||isMainAdmin?'disabled title="No se puede modificar este permiso"':'')+'>'+
           '<option value="viewer" '+(u.role==="viewer"?"selected":"")+'>Usuario</option>'+
           '<option value="admin" '+(u.role==="admin"?"selected":"")+'>Administrador</option>'+
         '</select>'+
-        '<button class="danger sm" data-delete-user="'+i+'" '+(isSelf?'disabled title="No puedes eliminar tu propia cuenta"':'')+'>Eliminar</button>'+
+        '<button class="danger sm" data-delete-user="'+i+'" '+(isSelf||isMainAdmin?'disabled title="No se puede eliminar esta cuenta"':'')+'>Eliminar</button>'+
       '</span></div>';
   }).join("");
 
@@ -889,6 +955,13 @@ $("finishBtn").onclick=()=>{
   });
   persist();
   render();
+};
+
+$("clearActiveMatchBtn").onclick=()=>{
+  if(!isAdmin())return;
+  if(!confirm("¿Seguro que quieres limpiar los datos del partido activo? Se borrarán el marcador, el cronómetro, los goles, la línea de tiempo y las estadísticas del partido en vivo.")) return;
+  clearActiveMatchData();
+  alert("Datos del partido activo y estadísticas en vivo limpiados.");
 };
 
 function removeGoalWithConfirm(team){
@@ -1068,6 +1141,10 @@ $("usersList").onchange=e=>{
   const idx=+sel.dataset.userRole;
   const target=db.users[idx];
   if(!target)return;
+  if(isMainAdminIdentifier(target.email) || isMainAdminIdentifier(target.username)){
+    sel.value="admin";
+    return alert("No se puede cambiar el rol del administrador principal.");
+  }
   if(me && target.email.toLowerCase()===me.email.toLowerCase()){
     sel.value=target.role;
     return alert("No puedes cambiar tu propio tipo de permiso.");
@@ -1092,6 +1169,9 @@ $("usersList").onclick=e=>{
   const idx=+btn.dataset.deleteUser;
   const target=db.users[idx];
   if(!target)return;
+  if(isMainAdminIdentifier(target.email) || isMainAdminIdentifier(target.username)){
+    return alert("No puedes eliminar al administrador principal.");
+  }
   if(me && target.email.toLowerCase()===me.email.toLowerCase()){
     return alert("No puedes eliminar tu propio usuario mientras tienes la sesión iniciada.");
   }
