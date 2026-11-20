@@ -115,8 +115,8 @@ label{display:block;color:var(--muted);font-size:13px}
       </div>
 
       <div id="loginForm">
-        <label>Usuario o correo electrónico</label>
-        <input id="loginEmail" type="text" placeholder="Usuario o correo electrónico" autocomplete="username">
+        <label>Correo electrónico</label>
+        <input id="loginEmail" type="email" placeholder="Correo electrónico" autocomplete="email">
         <label>Contraseña</label>
         <div class="pass-wrap">
           <input id="loginPass" type="password" placeholder="Contraseña" autocomplete="current-password">
@@ -363,14 +363,44 @@ label{display:block;color:var(--muted);font-size:13px}
   </div>
 </div>
 
-<script>
+<script type="module">
+import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
+import {
+  getAuth,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut
+} from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
+
 const $=id=>document.getElementById(id);
-const STORAGE_KEY="marcadorFC_v5";
-const DEFAULT_FB_URL="https://temporizador-real-default-rtdb.firebaseio.com";
-const MAIN_ADMIN_USER="DavidPR";
-const MAIN_ADMIN_EMAIL="davidpr@marcador.fc";
-const LEGACY_ADMIN_EMAILS=["davidperez@elgofondedavid.com","admin@marcador.fc"];
-const MAIN_ADMIN_PASS="DPR123";
+const STORAGE_KEY="marcadorFC_v6";
+
+// Sustituye estos valores por los de tu proyecto en Firebase Console
+const FIREBASE_CONFIG={
+  apiKey:"TU_API_KEY",
+  authDomain:"temporizador-real.firebaseapp.com",
+  databaseURL:"https://temporizador-real-default-rtdb.firebaseio.com",
+  projectId:"temporizador-real"
+};
+// Copia aquí el UID del administrador creado en Authentication -> Users
+const ADMIN_UID="TU_UID";
+
+const firebaseApp=initializeApp(FIREBASE_CONFIG);
+const auth=getAuth(firebaseApp);
+
+function getSecondaryAuth(){
+  const existing=getApps().find(a=>a.name==="AdminUserCreator");
+  const secApp=existing || initializeApp(FIREBASE_CONFIG,"AdminUserCreator");
+  return getAuth(secApp);
+}
+
+async function createAuthUserWithoutLoggingOutAdmin(email, password){
+  const secAuth=getSecondaryAuth();
+  const cred=await createUserWithEmailAndPassword(secAuth, email, password);
+  await signOut(secAuth);
+  return cred.user.uid;
+}
 
 const EYE_OPEN=`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
 const EYE_CLOSED=`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
@@ -385,31 +415,14 @@ document.querySelectorAll("[data-toggle-pass]").forEach(btn=>{
   };
 });
 
-function isMainAdminIdentifier(val){
-  const clean=String(val||"").trim().toLowerCase();
-  return clean===MAIN_ADMIN_USER.toLowerCase() || clean===MAIN_ADMIN_EMAIL.toLowerCase() || LEGACY_ADMIN_EMAILS.includes(clean);
-}
-
 function fallbackUserName(email, explicitName){
   if(explicitName && String(explicitName).trim()) return String(explicitName).trim();
   if(!email) return "Usuario";
-  if(isMainAdminIdentifier(email)) return MAIN_ADMIN_USER;
   return email.split("@")[0];
 }
 
-function getMainAdminUser(){
-  return {
-    name:MAIN_ADMIN_USER,
-    username:MAIN_ADMIN_USER,
-    email:MAIN_ADMIN_EMAIL,
-    password:MAIN_ADMIN_PASS,
-    role:"admin",
-    approved:true
-  };
-}
-
 let db={
-  users:[getMainAdminUser()],
+  users:[],
   requests:[],
   home:"Nuestro equipo",
   players:["Jugador 1","Jugador 2","Jugador 3","Jugador 4","Jugador 5"],
@@ -431,38 +444,18 @@ let db={
   updatedAt:0
 };
 
-function normalizeUsers(list){
-  const mapped=(Array.isArray(list)?list:[]).map(u=>{
-    const rawId=u.username||u.email||"";
-    const mainAdmin=isMainAdminIdentifier(rawId) || isMainAdminIdentifier(u.email) || isMainAdminIdentifier(u.name);
-    if(mainAdmin) return getMainAdminUser();
-    const em=u.email||(rawId.includes("@")?rawId:rawId+"@marcador.fc");
-    return {
-      name:fallbackUserName(em, u.name),
-      username:u.username||(em?em.split("@")[0]:"Usuario"),
-      email:em,
-      password:u.password,
-      role:u.role==="admin"?"admin":"viewer",
-      approved:u.approved!==false
-    };
-  });
-  const hasMain=mapped.some(u=>u.email.toLowerCase()===MAIN_ADMIN_EMAIL.toLowerCase() || (u.username||"").toLowerCase()===MAIN_ADMIN_USER.toLowerCase());
-  if(!hasMain) mapped.unshift(getMainAdminUser());
-  return mapped;
-}
-
 try{
-  let saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||localStorage.getItem("marcadorFC_v2"));
+  const saved=JSON.parse(localStorage.getItem(STORAGE_KEY));
   if(saved){
     db={...db,...saved};
-    db.users=normalizeUsers(db.users);
-    if(typeof saved.elapsed==="number" && saved.baseElapsed===undefined) db.baseElapsed=saved.elapsed;
+    db.users=Array.isArray(db.users)?db.users:[];
   }
 }catch(e){}
 
 let me=null;
 let ticker=null;
-const fbUrl=DEFAULT_FB_URL.replace(/\/+$/,"");
+let activeView="live";
+const fbUrl=(FIREBASE_CONFIG.databaseURL||"").replace(/\/+$/,"");
 let fbStream=null;
 let isSyncingRemote=false;
 
@@ -506,11 +499,22 @@ function setSyncUI(status, text){
   lbl.textContent=text;
 }
 
+async function getDbAuthQuery(){
+  if(!auth.currentUser) return "";
+  try{
+    const token=await auth.currentUser.getIdToken();
+    return token ? "?auth="+encodeURIComponent(token) : "";
+  }catch(_){
+    return "";
+  }
+}
+
 async function pushToFirebase(){
   if(!fbUrl || isSyncingRemote) return;
   try{
     setSyncUI("online","Sincronizando...");
-    const res=await fetch(fbUrl+"/marcador_fc_state.json",{
+    const q=await getDbAuthQuery();
+    const res=await fetch(`${fbUrl}/marcador_fc_state.json${q}`,{
       method:"PUT",
       headers:{"Content-Type":"application/json"},
       body:JSON.stringify(db)
@@ -522,12 +526,13 @@ async function pushToFirebase(){
   }
 }
 
-function connectFirebaseStream(){
+async function connectFirebaseStream(){
   if(fbStream){fbStream.close();fbStream=null;}
   if(!fbUrl){setSyncUI("local","Local");return;}
   try{
     setSyncUI("online","Conectando...");
-    fbStream=new EventSource(fbUrl+"/marcador_fc_state.json");
+    const q=await getDbAuthQuery();
+    fbStream=new EventSource(`${fbUrl}/marcador_fc_state.json${q}`);
     const applyRemote=(raw)=>{
       if(!raw)return;
       let parsed=JSON.parse(raw);
@@ -536,7 +541,7 @@ function connectFirebaseStream(){
       if((remote.updatedAt||0) > (db.updatedAt||0)){
         isSyncingRemote=true;
         db={...db,...remote};
-        db.users=normalizeUsers(db.users);
+        db.users=Array.isArray(db.users)?db.users:[];
         db.requests=Array.isArray(db.requests)?db.requests:[];
         db.players=Array.isArray(db.players)?db.players:[];
         db.onField=Array.isArray(db.onField)?db.onField:[];
@@ -544,12 +549,6 @@ function connectFirebaseStream(){
         db.timeline=Array.isArray(db.timeline)?db.timeline:[];
         db.history=Array.isArray(db.history)?db.history:[];
         localStorage.setItem(STORAGE_KEY,JSON.stringify(db));
-        if(me){
-          const updatedMe=db.users.find(u=>u.email.toLowerCase()===me.email.toLowerCase() || (u.username||"").toLowerCase()===(me.username||"").toLowerCase());
-          if(!updatedMe){$("logout").onclick();return;}
-          me=updatedMe;
-          applyRoleUI();
-        }
         ensureTicker();
         render();
         isSyncingRemote=false;
@@ -652,7 +651,7 @@ function clearActiveMatchData(){
   render();
 }
 
-// AUTENTICACIÓN
+// AUTENTICACIÓN CON FIREBASE AUTH
 function setAuth(tab){
   document.querySelectorAll("[data-auth]").forEach(b=>b.classList.toggle("active",b.dataset.auth===tab));
   $("loginForm").classList.toggle("hidden",tab!=="login");
@@ -663,19 +662,31 @@ document.querySelectorAll("[data-auth]").forEach(b=>b.onclick=()=>setAuth(b.data
 function authMsg(t,bad=false){$("authMsg").innerHTML='<div class="notice '+(bad?"err":"")+'">'+esc(t)+'</div>'}
 function isValidEmail(e){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)}
 
-$("loginBtn").onclick=()=>{
-  const idInput=$("loginEmail").value.trim().toLowerCase();
-  const pass=$("loginPass").value;
-  if(isMainAdminIdentifier(idInput) && pass===MAIN_ADMIN_PASS){
-    db.users=normalizeUsers(db.users);
-    me=db.users.find(u=>u.email.toLowerCase()===MAIN_ADMIN_EMAIL.toLowerCase()) || getMainAdminUser();
-    enter();
-    return;
+function mapAuthError(err){
+  const code=err && err.code || "";
+  if(code==="auth/invalid-credential" || code==="auth/wrong-password" || code==="auth/user-not-found"){
+    return "Correo electrónico o contraseña incorrectos.";
   }
-  const u=db.users.find(x=>((x.email && x.email.toLowerCase()===idInput) || (x.username && x.username.toLowerCase()===idInput)) && x.password===pass && x.approved);
-  if(!u) return authMsg("Usuario o contraseña incorrectos, o cuenta pendiente de aprobación.",true);
-  me=u;
-  enter();
+  if(code==="auth/invalid-email") return "Introduce un correo electrónico válido.";
+  if(code==="auth/email-already-in-use") return "Ese correo electrónico ya está registrado en Firebase Authentication.";
+  if(code==="auth/weak-password") return "La contraseña debe tener al menos 6 caracteres.";
+  if(code==="auth/too-many-requests") return "Demasiados intentos. Espera un momento e inténtalo de nuevo.";
+  return "No se ha podido completar la operación con Firebase Auth.";
+}
+
+$("loginBtn").onclick=async()=>{
+  const email=$("loginEmail").value.trim().toLowerCase();
+  const pass=$("loginPass").value;
+  if(!email || !pass) return authMsg("Introduce tu correo electrónico y contraseña.",true);
+  $("loginBtn").disabled=true;
+  try{
+    await signInWithEmailAndPassword(auth, email, pass);
+    $("authMsg").innerHTML="";
+  }catch(err){
+    authMsg(mapAuthError(err),true);
+  }finally{
+    $("loginBtn").disabled=false;
+  }
 };
 
 $("requestBtn").onclick=()=>{
@@ -690,25 +701,28 @@ $("requestBtn").onclick=()=>{
     return authMsg("Ese correo electrónico ya está registrado o pendiente de solicitud.",true);
   }
   db.requests.push({name,email,password});
-  persist();
+  persist(true);
   $("reqName").value="";$("reqEmail").value="";$("reqPass").value="";$("reqPass2").value="";
   authMsg("Solicitud enviada. Un administrador deberá aprobarla.");
 };
 
 function switchView(viewName){
   if(!isAdmin() && ["setup","users","stats"].includes(viewName)) viewName="live";
+  activeView=viewName;
   document.querySelectorAll("[data-view]").forEach(x=>x.classList.toggle("active",x.dataset.view===viewName));
-  ["live","setup","users","history","stats"].forEach(v=>$("view-"+v).classList.toggle("hidden",v!==viewName));
+  ["live","setup","users","history","stats"].forEach(v=>{
+    const sec=$("view-"+v);
+    if(sec) sec.classList.toggle("hidden",v!==viewName);
+  });
   render();
 }
 
 function applyRoleUI(){
   const admin=isAdmin();
-  $("who").textContent=me.username || fallbackUserName(me.email, me.name);
+  $("who").textContent=fallbackUserName(me.email, me.name);
   $("rolePill").textContent=admin?"ADMINISTRADOR":"USUARIO";
-  document.querySelectorAll(".admin-only").forEach(el=>el.classList.toggle("hidden",!admin));
-  const activeTab=document.querySelector("[data-view].active");
-  if(!admin && activeTab && ["setup","users","stats"].includes(activeTab.dataset.view)){
+  document.querySelectorAll(".admin-only:not([id^='view-'])").forEach(el=>el.classList.toggle("hidden",!admin));
+  if(!admin && ["setup","users","stats"].includes(activeView)){
     switchView("live");
   }
 }
@@ -718,19 +732,42 @@ function enter(){
   $("app").classList.remove("hidden");
   $("logout").classList.remove("hidden");
   applyRoleUI();
+  switchView("live");
   ensureTicker();
-  render();
 }
 
-$("logout").onclick=()=>{
-  me=null;
-  $("app").classList.add("hidden");
-  $("auth").classList.remove("hidden");
-  $("logout").classList.add("hidden");
-  $("who").textContent="";
-  $("loginPass").value="";
-  switchView("live");
+$("logout").onclick=async()=>{
+  try{
+    await signOut(auth);
+  }catch(_){}
 };
+
+onAuthStateChanged(auth, async (fbUser)=>{
+  if(fbUser){
+    const isRootAdmin = ADMIN_UID && ADMIN_UID!=="TU_UID" && fbUser.uid===ADMIN_UID;
+    const savedProfile = db.users.find(u=>
+      (u.uid && u.uid===fbUser.uid) ||
+      (u.email && u.email.toLowerCase()===(fbUser.email||"").toLowerCase())
+    );
+    me={
+      uid:fbUser.uid,
+      email:fbUser.email||"",
+      name:savedProfile?.name || (isRootAdmin ? "Administrador" : fallbackUserName(fbUser.email)),
+      role:isRootAdmin ? "admin" : (savedProfile?.role==="admin" ? "admin" : "viewer")
+    };
+    enter();
+    await connectFirebaseStream();
+  }else{
+    me=null;
+    activeView="live";
+    $("app").classList.add("hidden");
+    $("auth").classList.remove("hidden");
+    $("logout").classList.add("hidden");
+    $("who").textContent="";
+    $("loginPass").value="";
+    await connectFirebaseStream();
+  }
+});
 
 document.querySelectorAll("[data-view]").forEach(b=>b.onclick=()=>switchView(b.dataset.view));
 
@@ -805,23 +842,19 @@ function render(){
     '<span class="row" style="flex:0 0 auto"><button class="sm" data-approve="'+i+'">Aprobar</button> <button class="danger sm" data-reject="'+i+'">Rechazar</button></span></div>'
   ).join(""):'<span class="muted">No hay solicitudes pendientes.</span>';
 
-  $("usersList").innerHTML=db.users.map((u,i)=>{
-    const isSelf=me && (u.email.toLowerCase()===me.email.toLowerCase() || (u.username||"").toLowerCase()===(me.username||"").toLowerCase());
-    const isMainAdmin=isMainAdminIdentifier(u.email) || isMainAdminIdentifier(u.username);
-    const displayName=isMainAdmin ? MAIN_ADMIN_USER : fallbackUserName(u.email, u.name);
-    const subtitle=isMainAdmin
-      ? `Usuario: ${MAIN_ADMIN_USER} · Permiso: Administrador`
-      : `${u.email} · Permiso: ${u.role==="admin"?"Administrador":"Usuario"}`;
+  $("usersList").innerHTML=db.users.length?db.users.map((u,i)=>{
+    const isSelf=me && ((u.uid && me.uid && u.uid===me.uid) || (u.email && me.email && u.email.toLowerCase()===me.email.toLowerCase()));
+    const displayName=fallbackUserName(u.email, u.name);
     return '<div class="item">'+
-      '<span><b>'+esc(displayName)+'</b> '+(isSelf?'<span class="pill green">TÚ</span>':'')+'<br><small>'+esc(subtitle)+'</small></span>'+
+      '<span><b>'+esc(displayName)+'</b> '+(isSelf?'<span class="pill green">TÚ</span>':'')+'<br><small>'+esc(u.email)+' · Permiso: '+(u.role==="admin"?"Administrador":"Usuario")+'</small></span>'+
       '<span class="row" style="flex:0 0 auto;flex-wrap:nowrap">'+
-        '<select data-user-role="'+i+'" style="margin:0;padding:7px 10px;width:auto" '+(isSelf||isMainAdmin?'disabled title="No se puede modificar este permiso"':'')+'>'+
+        '<select data-user-role="'+i+'" style="margin:0;padding:7px 10px;width:auto" '+(isSelf?'disabled':'')+'>'+
           '<option value="viewer" '+(u.role==="viewer"?"selected":"")+'>Usuario</option>'+
           '<option value="admin" '+(u.role==="admin"?"selected":"")+'>Administrador</option>'+
         '</select>'+
-        '<button class="danger sm" data-delete-user="'+i+'" '+(isSelf||isMainAdmin?'disabled title="No se puede eliminar esta cuenta"':'')+'>Eliminar</button>'+
+        '<button class="danger sm" data-delete-user="'+i+'" '+(isSelf?'disabled':'')+'>Eliminar</button>'+
       '</span></div>';
-  }).join("");
+  }).join(""):`<div class="item"><span><b>${esc(me?.email || "Administrador")}</b><br><small>Sin otros usuarios registrados en la lista.</small></span></div>`;
 
   $("historyList").innerHTML=db.history.length?db.history.map((h,i)=>
     '<div class="item">'+
@@ -1089,7 +1122,7 @@ $("prepareMatch").onclick=()=>{
   alert("Partido preparado. Selecciona los titulares en Partido en directo antes de iniciarlo.");
 };
 
-$("createUser").onclick=()=>{
+$("createUser").onclick=async()=>{
   if(!isAdmin())return;
   const name=$("newUserName").value.trim();
   const email=$("newUserEmail").value.trim().toLowerCase();
@@ -1102,30 +1135,49 @@ $("createUser").onclick=()=>{
   if(password!==password2) return alert("Las contraseñas no coinciden.");
   if(db.users.some(u=>u.email.toLowerCase()===email)) return alert("Ya existe un usuario con ese correo electrónico.");
 
-  db.users.push({name,email,password,role,approved:true});
-  $("newUserName").value="";
-  $("newUserEmail").value="";
-  $("newUserPass").value="";
-  $("newUserPass2").value="";
-  persist();
-  render();
-  alert("Usuario creado correctamente.");
+  $("createUser").disabled=true;
+  try{
+    const uid=await createAuthUserWithoutLoggingOutAdmin(email, password);
+    db.users.push({uid,name,email,role,approved:true});
+    $("newUserName").value="";
+    $("newUserEmail").value="";
+    $("newUserPass").value="";
+    $("newUserPass2").value="";
+    persist();
+    render();
+    alert("Usuario creado en Firebase Authentication correctamente.");
+  }catch(err){
+    alert(mapAuthError(err));
+  }finally{
+    $("createUser").disabled=false;
+  }
 };
 
-$("requests").onclick=e=>{
+$("requests").onclick=async e=>{
   if(!isAdmin())return;
   const a=e.target.closest("[data-approve]"), r=e.target.closest("[data-reject]");
   if(a){
-    const x=db.requests.splice(+a.dataset.approve,1)[0];
-    db.users.push({
-      name:fallbackUserName(x.email, x.name),
-      email:x.email,
-      password:x.password,
-      role:"viewer",
-      approved:true
-    });
-    persist();
-    render();
+    const idx=+a.dataset.approve;
+    const x=db.requests[idx];
+    if(!x)return;
+    a.disabled=true;
+    try{
+      const uid=x.password ? await createAuthUserWithoutLoggingOutAdmin(x.email, x.password) : "";
+      db.requests.splice(idx,1);
+      db.users.push({
+        uid,
+        name:fallbackUserName(x.email, x.name),
+        email:x.email,
+        role:"viewer",
+        approved:true
+      });
+      persist();
+      render();
+      alert("Solicitud aprobada y cuenta creada en Firebase Authentication.");
+    }catch(err){
+      a.disabled=false;
+      alert(mapAuthError(err));
+    }
   }
   if(r){
     db.requests.splice(+r.dataset.reject,1);
@@ -1141,23 +1193,11 @@ $("usersList").onchange=e=>{
   const idx=+sel.dataset.userRole;
   const target=db.users[idx];
   if(!target)return;
-  if(isMainAdminIdentifier(target.email) || isMainAdminIdentifier(target.username)){
-    sel.value="admin";
-    return alert("No se puede cambiar el rol del administrador principal.");
-  }
   if(me && target.email.toLowerCase()===me.email.toLowerCase()){
     sel.value=target.role;
     return alert("No puedes cambiar tu propio tipo de permiso.");
   }
-  const newRole=sel.value;
-  if(target.role==="admin" && newRole!=="admin"){
-    const adminCount=db.users.filter(u=>u.role==="admin").length;
-    if(adminCount<=1){
-      sel.value="admin";
-      return alert("Debe haber al menos un administrador registrado.");
-    }
-  }
-  target.role=newRole;
+  target.role=sel.value;
   persist();
   render();
 };
@@ -1169,18 +1209,10 @@ $("usersList").onclick=e=>{
   const idx=+btn.dataset.deleteUser;
   const target=db.users[idx];
   if(!target)return;
-  if(isMainAdminIdentifier(target.email) || isMainAdminIdentifier(target.username)){
-    return alert("No puedes eliminar al administrador principal.");
-  }
   if(me && target.email.toLowerCase()===me.email.toLowerCase()){
     return alert("No puedes eliminar tu propio usuario mientras tienes la sesión iniciada.");
   }
-  if(target.role==="admin"){
-    const adminCount=db.users.filter(u=>u.role==="admin").length;
-    if(adminCount<=1) return alert("No puedes eliminar al único administrador.");
-  }
-  const displayName=fallbackUserName(target.email, target.name);
-  if(!confirm(`¿Seguro que quieres eliminar al usuario ${displayName} (${target.email})?`)) return;
+  if(!confirm(`¿Seguro que quieres eliminar a ${fallbackUserName(target.email, target.name)} (${target.email}) de la lista?`)) return;
   db.users.splice(idx,1);
   persist();
   render();
@@ -1234,7 +1266,6 @@ $("historyList").onclick=e=>{
 $("closeDetail").onclick=()=>$("detailModal").classList.add("hidden");
 $("detailModal").onclick=e=>{if(e.target===$("detailModal"))$("detailModal").classList.add("hidden")};
 
-connectFirebaseStream();
 ensureTicker();
 render();
 </script>
