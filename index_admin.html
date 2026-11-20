@@ -1,0 +1,1251 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Marcador FC</title>
+<style>
+:root{
+  --bg:#08090b;--panel:#14161a;--panel2:#202329;--line:#343840;
+  --white:#f5f5f3;--muted:#a5a8ad;--accent:#ffb52e;--accent2:#ffd071;
+  --red:#ff6868;--green:#9be28c
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--white);font:15px system-ui,-apple-system,Segoe UI,Arial}
+header{display:flex;justify-content:space-between;align-items:center;padding:14px max(16px,calc((100vw - 1080px)/2));border-bottom:1px solid var(--line);background:#0b0c0f;position:sticky;top:0;z-index:10;gap:10px}
+.brand{font-weight:950;letter-spacing:1.2px;display:flex;align-items:center;gap:8px}.brand b{color:var(--accent)}
+main{max-width:1080px;margin:22px auto;padding:0 16px 40px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:17px;padding:19px;margin-bottom:17px}
+h1{font-size:clamp(24px,4vw,36px);margin:0 0 6px}
+h2{font-size:19px;margin:0 0 14px}
+h3{font-size:16px;margin:0 0 12px}
+hr{border:0;border-top:1px solid var(--line);margin:18px 0}
+.muted,.hint{color:var(--muted)}.hint{font-size:12px;line-height:1.5}
+button,input,select{font:inherit}
+button{border:0;border-radius:11px;padding:11px 15px;background:var(--accent);color:#17130a;font-weight:800;cursor:pointer;transition:.15s}
+button:hover{filter:brightness(1.08);transform:translateY(-1px)}
+button:disabled{opacity:.4;cursor:not-allowed;transform:none}
+button.secondary{background:var(--panel2);border:1px solid var(--line);color:var(--white)}
+button.outline{background:transparent;border:1px solid var(--accent);color:var(--accent)}
+button.danger{background:#542a2a;color:#ffe8e8}
+button.sm{padding:7px 11px;font-size:13px;border-radius:9px}
+input,select{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;background:#0b0d10;color:var(--white);margin:6px 0 14px}
+label{display:block;color:var(--muted);font-size:13px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.row>*{flex:1}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}
+.tabs button{background:var(--panel2);color:var(--white)}
+.tabs button.active{background:var(--accent);color:#17130a}
+.tabs button.alert-tab{background:#6e1d1d;color:#fff0f0;border:1px solid #ff6868;box-shadow:0 0 0 1px rgba(255,104,104,.25)}
+.tabs button.alert-tab.active{background:#d93838;color:#ffffff;border-color:#ff9c9c}
+.hidden{display:none!important}
+.score{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;text-align:center}
+.team{font-weight:850;font-size:clamp(15px,2.8vw,23px)}
+.goals{font-size:clamp(54px,10vw,86px);font-weight:950;line-height:1.12;font-variant-numeric:tabular-nums}
+.clock{font-size:clamp(48px,9vw,72px);font-weight:900;letter-spacing:1px;text-align:center;font-variant-numeric:tabular-nums;margin:10px 0 0}
+.period{text-align:center;color:var(--accent);font-weight:750;margin-top:2px}
+.status{text-align:center;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:1.1px}
+.actiongrid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-top:17px}
+.actiongrid button{min-height:48px}
+.score-controls{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.scorebox{background:#0d0f12;border:1px solid var(--line);border-radius:14px;padding:14px;text-align:center}
+.scorebox strong{display:block;margin-bottom:10px}
+.scorebuttons{display:flex;gap:8px;justify-content:center}
+.scorebuttons button{width:52px;height:48px;padding:0;font-size:23px;border-radius:12px}
+.scorebuttons .minus{background:#292d34;color:#fff;border:1px solid #444a54}
+.list{display:grid;gap:8px}
+.item{padding:11px 12px;background:#0c0e11;border:1px solid var(--line);border-radius:11px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.item small{color:var(--muted)}
+.pill{font-size:11px;border-radius:30px;padding:4px 9px;background:#352a16;color:var(--accent2);white-space:nowrap;font-weight:700}
+.pill.green{background:#1b3822;color:var(--green)}
+.pill.gray{background:#252830;color:var(--muted)}
+.playing{border-color:#80601f;background:#1b170f}
+.inactive{opacity:.82}
+.timeline{position:relative;padding-left:18px}
+.timeline:before{content:"";position:absolute;left:5px;top:5px;bottom:5px;width:2px;background:#51401f}
+.event{position:relative;padding:0 0 15px 10px}
+.event:before{content:"";position:absolute;left:-17px;top:5px;width:9px;height:9px;border-radius:50%;background:var(--accent);border:2px solid var(--bg)}
+.event:last-child{padding-bottom:0}
+.event b{color:var(--accent2)}
+.modal{position:fixed;inset:0;z-index:20;background:#000b;display:grid;place-items:center;padding:18px}
+.modal-box{width:min(100%,420px);background:var(--panel);border:1px solid var(--line);border-radius:17px;padding:22px;box-shadow:0 18px 60px #0009}
+.modal-box .row{margin-top:8px}
+.notice{padding:11px;border-radius:10px;background:#292113;color:#ffe2a5;margin:12px 0;font-size:13px}
+.err{background:#462323;color:#ffd9d9}
+.pass-wrap{position:relative;margin:6px 0 14px}
+.pass-wrap input{margin:0;padding-right:44px}
+.eye-btn{position:absolute;right:8px;top:50%;transform:translateY(-50%);background:transparent;border:0;color:var(--muted);padding:6px;width:auto;min-height:auto;display:grid;place-items:center}
+.eye-btn:hover{color:var(--white);transform:translateY(-50%);filter:none}
+.stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.stat-card{background:#0d0f12;border:1px solid var(--line);border-radius:13px;padding:14px}
+.stat-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #1e2127;font-size:14px}
+.stat-row:last-child{border-bottom:0}
+.sync-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);margin-right:5px}
+.sync-dot.online{background:var(--green);box-shadow:0 0 8px var(--green)}
+.footer-actions{display:flex;justify-content:flex-end;margin-top:20px}
+@media(max-width:650px){
+  .actiongrid{grid-template-columns:1fr 1fr}
+  .score-controls,.stats-grid{grid-template-columns:1fr}
+  .card{padding:15px}
+  .actiongrid button{font-size:13px;padding:10px 7px}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">⚽ MARCADOR <b>FC</b> <span id="syncBadge" class="pill gray" title="Estado de sincronización"><span class="sync-dot" id="syncDot"></span><span id="syncText">Local</span></span></div>
+  <div class="row" style="flex:0 0 auto;align-items:center;flex-wrap:nowrap">
+    <span id="who" class="muted" style="font-size:13px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+    <button id="logout" class="secondary sm hidden">Salir</button>
+  </div>
+</header>
+
+<main>
+  <!-- AUTENTICACIÓN -->
+  <section id="auth">
+    <div class="card" style="max-width:470px;margin:4vh auto">
+      <div style="text-align:center;padding:10px 0 20px">
+        <div style="font-size:42px">⚽</div>
+        <h1>MARCADOR FC</h1>
+        <p class="muted">Partidos en directo</p>
+      </div>
+      <div class="tabs">
+        <button class="active" data-auth="login">Iniciar sesión</button>
+        <button data-auth="request">Solicitar acceso</button>
+      </div>
+
+      <div id="loginForm">
+        <label>Usuario o correo electrónico</label>
+        <input id="loginEmail" type="text" placeholder="Usuario o correo electrónico" autocomplete="username">
+        <label>Contraseña</label>
+        <div class="pass-wrap">
+          <input id="loginPass" type="password" placeholder="Contraseña" autocomplete="current-password">
+          <button type="button" class="eye-btn" data-toggle-pass="loginPass" aria-label="Mostrar u ocultar contraseña"></button>
+        </div>
+        <button id="loginBtn" style="width:100%">Entrar</button>
+      </div>
+
+      <div id="requestForm" class="hidden">
+        <label>Nombre y apellidos</label>
+        <input id="reqName" placeholder="Tu nombre">
+        <label>Correo electrónico</label>
+        <input id="reqEmail" type="email" placeholder="ejemplo@correo.com">
+        <label>Contraseña</label>
+        <div class="pass-wrap">
+          <input id="reqPass" type="password" placeholder="••••••••">
+          <button type="button" class="eye-btn" data-toggle-pass="reqPass" aria-label="Mostrar u ocultar contraseña"></button>
+        </div>
+        <label>Repetir contraseña</label>
+        <div class="pass-wrap">
+          <input id="reqPass2" type="password" placeholder="••••••••">
+          <button type="button" class="eye-btn" data-toggle-pass="reqPass2" aria-label="Mostrar u ocultar contraseña"></button>
+        </div>
+        <button id="requestBtn" style="width:100%">Enviar solicitud</button>
+      </div>
+
+      <div id="authMsg"></div>
+    </div>
+  </section>
+
+  <!-- APLICACIÓN PRINCIPAL -->
+  <section id="app" class="hidden">
+    <div class="row" style="justify-content:space-between;margin-bottom:17px">
+      <div>
+        <h1 id="panelTitle">Nuestro equipo</h1>
+        <p class="muted" id="panelSubtitle">Seguimiento en directo</p>
+      </div>
+      <span id="rolePill" class="pill" style="flex:0 0 auto">ADMINISTRADOR</span>
+    </div>
+
+    <div class="tabs">
+      <button class="active" data-view="live">Partido en directo</button>
+      <button data-view="setup" class="admin-only">Crear / configurar</button>
+      <button data-view="users" id="usersTabBtn" class="admin-only">Usuarios</button>
+      <button data-view="history">Historial</button>
+      <button data-view="stats" class="admin-only">Estadísticas</button>
+    </div>
+
+    <!-- VISTA: PARTIDO EN DIRECTO -->
+    <section id="view-live">
+      <div class="card">
+        <div class="status" id="matchStatus">PARTIDO PENDIENTE</div>
+        <div class="score">
+          <div>
+            <div class="team" id="homeName">Nuestro equipo</div>
+            <div class="goals" id="homeScore">0</div>
+          </div>
+          <div class="muted" style="font-size:22px">—</div>
+          <div>
+            <div class="team" id="awayName">Rival</div>
+            <div class="goals" id="awayScore">0</div>
+          </div>
+        </div>
+        <div class="clock" id="clock">00:00</div>
+        <div class="period" id="periodLabel">1.ª parte · 25 minutos</div>
+
+        <div class="actiongrid admin-only" id="matchActions">
+          <button id="startBtn">▶ Iniciar partido</button>
+          <button id="breakBtn" class="secondary">Ⅱ Descanso</button>
+          <button id="secondBtn" class="secondary">▶ Iniciar 2.º tiempo</button>
+          <button id="finishBtn" class="danger">■ Finalizar</button>
+        </div>
+
+        <div id="adminControls" class="admin-only">
+          <hr>
+          <h2>Modificar marcador</h2>
+          <div class="score-controls">
+            <div class="scorebox">
+              <strong id="homeScoreLabel">Nuestro equipo</strong>
+              <div class="scorebuttons">
+                <button class="minus" id="homeMinus" aria-label="Restar gol local">−</button>
+                <button id="homePlus" aria-label="Sumar gol local">+</button>
+              </div>
+            </div>
+            <div class="scorebox">
+              <strong id="awayScoreLabel">Rival</strong>
+              <div class="scorebuttons">
+                <button class="minus" id="awayMinus" aria-label="Restar gol visitante">−</button>
+                <button id="awayPlus" aria-label="Sumar gol visitante">+</button>
+              </div>
+            </div>
+          </div>
+
+          <hr>
+          <h2>Jugadores de nuestro equipo</h2>
+          <p class="hint">Antes de empezar, selecciona los titulares (mínimo 5). Durante el partido, registra los cambios.</p>
+          <div id="lineupAdmin" class="list"></div>
+        </div>
+
+        <hr>
+        <h2>Línea de tiempo del partido</h2>
+        <div id="timeline" class="timeline"><span class="muted">Todavía no hay acontecimientos.</span></div>
+      </div>
+    </section>
+
+    <!-- VISTA: CREAR / CONFIGURAR (SOLO ADMINISTRADORES) -->
+    <section id="view-setup" class="hidden admin-only">
+      <div class="card">
+        <h2>Configuración del equipo y del partido</h2>
+        <label>Nombre de nuestro equipo</label>
+        <div class="row">
+          <input id="homeInput" placeholder="Nombre de nuestro equipo" style="margin:0">
+          <button id="saveHome" style="flex:0 0 auto">Guardar nombre</button>
+        </div>
+        <p class="hint">Pulsa Guardar nombre para aplicar el cambio en el marcador y en los próximos partidos.</p>
+
+        <h3>Plantilla de jugadores <span class="pill" id="rosterCount">0 / 25</span></h3>
+        <div id="roster" class="list"></div>
+        <div class="row" style="margin-top:12px">
+          <input id="newPlayer" placeholder="Nombre del jugador" style="margin:0">
+          <button id="addPlayer" style="flex:0 0 auto">Añadir jugador</button>
+        </div>
+        <p class="hint">La plantilla se conserva para los siguientes partidos. Máximo 25 jugadores.</p>
+
+        <hr>
+        <h2>Preparar próximo partido</h2>
+        <label>Equipo visitante</label>
+        <input id="awayInput" placeholder="Nombre del equipo rival">
+        <div class="row">
+          <div>
+            <label>Número de partes para este partido</label>
+            <select id="matchPeriods">
+              <option value="1">Una parte</option>
+              <option value="2">Dos partes</option>
+            </select>
+          </div>
+          <div>
+            <label>Minutos por parte</label>
+            <input id="matchDuration" type="number" min="1" max="180" value="25">
+          </div>
+        </div>
+        <button id="prepareMatch">Guardar y preparar partido</button>
+      </div>
+    </section>
+
+    <!-- VISTA: USUARIOS (SOLO ADMINISTRADORES) -->
+    <section id="view-users" class="hidden admin-only">
+      <div class="card">
+        <h2>Solicitudes de acceso pendientes</h2>
+        <div id="requests" class="list"></div>
+
+        <hr>
+        <h2>Crear nuevo usuario</h2>
+        <div class="row">
+          <div>
+            <label>Nombre y apellidos</label>
+            <input id="newUserName" placeholder="Nombre del usuario">
+          </div>
+          <div>
+            <label>Correo electrónico</label>
+            <input id="newUserEmail" type="email" placeholder="usuario@correo.com">
+          </div>
+          <div>
+            <label>Permisos</label>
+            <select id="newUserRole">
+              <option value="viewer">Usuario</option>
+              <option value="admin">Administrador</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>Contraseña</label>
+            <div class="pass-wrap">
+              <input id="newUserPass" type="password" placeholder="••••••••">
+              <button type="button" class="eye-btn" data-toggle-pass="newUserPass" aria-label="Mostrar u ocultar contraseña"></button>
+            </div>
+          </div>
+          <div>
+            <label>Repetir contraseña</label>
+            <div class="pass-wrap">
+              <input id="newUserPass2" type="password" placeholder="••••••••">
+              <button type="button" class="eye-btn" data-toggle-pass="newUserPass2" aria-label="Mostrar u ocultar contraseña"></button>
+            </div>
+          </div>
+        </div>
+        <button id="createUser">Crear usuario</button>
+
+        <hr>
+        <h2>Usuarios registrados</h2>
+        <p class="hint">Gestiona los permisos (Usuario / Administrador) o elimina cuentas registradas.</p>
+        <div id="usersList" class="list"></div>
+      </div>
+    </section>
+
+    <!-- VISTA: HISTORIAL -->
+    <section id="view-history" class="hidden">
+      <div class="card">
+        <h2>Historial de partidos</h2>
+        <div id="historyList" class="list"></div>
+      </div>
+    </section>
+
+    <!-- VISTA: ESTADÍSTICAS (SOLO ADMINISTRADORES) -->
+    <section id="view-stats" class="hidden admin-only">
+      <div class="card">
+        <h2>Estadísticas del partido en vivo</h2>
+        <div class="stats-grid" id="liveStats"></div>
+      </div>
+      <div class="card">
+        <h2>Estadísticas acumuladas de la temporada</h2>
+        <p class="hint">Datos calculados a partir de todos los partidos finalizados en el historial.</p>
+        <div class="stats-grid" id="seasonStats"></div>
+      </div>
+    </section>
+
+    <div class="footer-actions admin-only" id="bottomActions">
+      <button id="clearActiveMatchBtn" class="danger">Limpiar partido activo</button>
+    </div>
+  </section>
+</main>
+
+<!-- MODAL AÑADIR GOL -->
+<div id="goalModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="goalModalTitle">
+  <div class="modal-box">
+    <h2 id="goalModalTitle">Añadir gol · Nuestro equipo</h2>
+    <label>Jugador que ha marcado</label>
+    <select id="goalScorer"></select>
+    <div class="row">
+      <button id="confirmGoal">Añadir gol</button>
+      <button id="cancelGoal" class="secondary">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL DETALLE DE PARTIDO DEL HISTORIAL -->
+<div id="detailModal" class="modal hidden" role="dialog" aria-modal="true">
+  <div class="modal-box" style="width:min(100%,540px);max-height:85vh;overflow:auto">
+    <h2 id="detailTitle">Detalle del partido</h2>
+    <div id="detailBody"></div>
+    <div class="row" style="margin-top:16px">
+      <button id="closeDetail" class="secondary">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const STORAGE_KEY="marcadorFC_v5";
+const DEFAULT_FB_URL="https://temporizador-real-default-rtdb.firebaseio.com";
+const MAIN_ADMIN_ID="admin_root";
+const ADMIN_USER="davidpr";
+const ADMIN_PASS="DPR123";
+
+const EYE_OPEN=`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+const EYE_CLOSED=`<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
+
+document.querySelectorAll("[data-toggle-pass]").forEach(btn=>{
+  btn.innerHTML=EYE_OPEN;
+  btn.onclick=()=>{
+    const inp=$(btn.dataset.togglePass);
+    const show=inp.type==="password";
+    inp.type=show?"text":"password";
+    btn.innerHTML=show?EYE_CLOSED:EYE_OPEN;
+  };
+});
+
+function isMainAdminAccount(u){
+  return Boolean(u && (u.id===MAIN_ADMIN_ID || u.isRootAdmin));
+}
+
+function fallbackUserName(email, explicitName){
+  if(explicitName && String(explicitName).trim()) return String(explicitName).trim();
+  if(!email) return "Usuario";
+  return email.split("@")[0];
+}
+
+function getMainAdminUser(displayLabel="DavidPR"){
+  return {
+    id:MAIN_ADMIN_ID,
+    isRootAdmin:true,
+    name:displayLabel,
+    email:"DavidPR",
+    role:"admin",
+    approved:true
+  };
+}
+
+let db={
+  users:[getMainAdminUser()],
+  requests:[],
+  home:"Nuestro equipo",
+  players:["Jugador 1","Jugador 2","Jugador 3","Jugador 4","Jugador 5"],
+  away:"",
+  periods:2,
+  duration:25,
+  period:1,
+  baseElapsed:0,
+  startedAt:null,
+  running:false,
+  phase:"pending",
+  homeScore:0,
+  awayScore:0,
+  onField:[],
+  playerMinutes:{},
+  goals:[],
+  timeline:[],
+  history:[],
+  updatedAt:0
+};
+
+function normalizeUsers(list){
+  const legacyIds=["davidpr","davidpr@marcador.fc","davidperez@elgofondedavid.com","admin@marcador.fc"];
+  const mapped=(Array.isArray(list)?list:[]).map(u=>{
+    const checkStr=String(u.username||u.email||u.name||"").toLowerCase();
+    if(isMainAdminAccount(u) || legacyIds.includes(checkStr)){
+      return getMainAdminUser(u.isRootAdmin ? u.name : "DavidPR");
+    }
+    const em=u.email||(checkStr.includes("@")?checkStr:checkStr+"@marcador.fc");
+    return {
+      name:fallbackUserName(em, u.name),
+      email:em,
+      password:u.password,
+      role:u.role==="admin"?"admin":"viewer",
+      approved:u.approved!==false
+    };
+  });
+  const hasMain=mapped.some(u=>isMainAdminAccount(u));
+  if(!hasMain) mapped.unshift(getMainAdminUser());
+  return mapped;
+}
+
+try{
+  let saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||localStorage.getItem("marcadorFC_v2"));
+  if(saved){
+    db={...db,...saved};
+    db.users=normalizeUsers(db.users);
+    if(typeof saved.elapsed==="number" && saved.baseElapsed===undefined) db.baseElapsed=saved.elapsed;
+  }
+}catch(e){}
+
+let me=null;
+let ticker=null;
+let activeView="live";
+const fbUrl=DEFAULT_FB_URL.replace(/\/+$/,"");
+let fbStream=null;
+let isSyncingRemote=false;
+
+function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function nowTimeStr(){return new Date().toLocaleTimeString("es-ES",{hour:"2-digit",minute:"2-digit"})}
+function isAdmin(){return Boolean(me && me.role==="admin")}
+
+function getElapsedSeconds(){
+  if(db.running && db.startedAt){
+    return Math.max(0, Math.floor((db.baseElapsed||0) + (Date.now() - db.startedAt)/1000));
+  }
+  return Math.max(0, Math.floor(db.baseElapsed||0));
+}
+function fmt(s){
+  const sec=Math.max(0,Math.floor(s));
+  return String(Math.floor(sec/60)).padStart(2,"0")+":"+String(sec%60).padStart(2,"0");
+}
+function matchMinute(){
+  const currentPeriodMin=Math.floor(getElapsedSeconds()/60);
+  return (db.period===2 ? Number(db.duration||25) : 0) + currentPeriodMin;
+}
+function updateClockDisplay(){
+  const el=getElapsedSeconds();
+  $("clock").textContent=fmt(el);
+  $("periodLabel").textContent=(db.period===1?"1.ª":"2.ª")+" parte · "+db.duration+" minutos";
+}
+function ensureTicker(){
+  if(db.running && !ticker){
+    ticker=setInterval(updateClockDisplay, 250);
+  }else if(!db.running && ticker){
+    clearInterval(ticker);
+    ticker=null;
+  }
+}
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)updateClockDisplay()});
+
+function setSyncUI(status, text){
+  const dot=$("syncDot"), lbl=$("syncText");
+  if(!dot||!lbl)return;
+  dot.classList.toggle("online", status==="online");
+  lbl.textContent=text;
+}
+
+async function pushToFirebase(){
+  if(!fbUrl || isSyncingRemote) return;
+  try{
+    setSyncUI("online","Sincronizando...");
+    const res=await fetch(fbUrl+"/marcador_fc_state.json",{
+      method:"PUT",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(db)
+    });
+    if(!res.ok) throw new Error("HTTP "+res.status);
+    setSyncUI("online","En vivo");
+  }catch(err){
+    setSyncUI("error","Error nube");
+  }
+}
+
+function connectFirebaseStream(){
+  if(fbStream){fbStream.close();fbStream=null;}
+  if(!fbUrl){setSyncUI("local","Local");return;}
+  try{
+    setSyncUI("online","Conectando...");
+    fbStream=new EventSource(fbUrl+"/marcador_fc_state.json");
+    const applyRemote=(raw)=>{
+      if(!raw)return;
+      let parsed=JSON.parse(raw);
+      let remote=parsed && parsed.data!==undefined ? parsed.data : parsed;
+      if(!remote || typeof remote!=="object")return;
+      if((remote.updatedAt||0) > (db.updatedAt||0)){
+        isSyncingRemote=true;
+        db={...db,...remote};
+        db.users=normalizeUsers(db.users);
+        db.requests=Array.isArray(db.requests)?db.requests:[];
+        db.players=Array.isArray(db.players)?db.players:[];
+        db.onField=Array.isArray(db.onField)?db.onField:[];
+        db.goals=Array.isArray(db.goals)?db.goals:[];
+        db.timeline=Array.isArray(db.timeline)?db.timeline:[];
+        db.history=Array.isArray(db.history)?db.history:[];
+        localStorage.setItem(STORAGE_KEY,JSON.stringify(db));
+        if(me){
+          const updatedMe=isMainAdminAccount(me)
+            ? db.users.find(u=>isMainAdminAccount(u))
+            : db.users.find(u=>u.email.toLowerCase()===me.email.toLowerCase());
+          if(!updatedMe){$("logout").onclick();return;}
+          me={...updatedMe, name: isMainAdminAccount(me) ? me.name : updatedMe.name};
+          applyRoleUI();
+        }
+        ensureTicker();
+        render();
+        isSyncingRemote=false;
+      }
+      setSyncUI("online","En vivo");
+    };
+    fbStream.addEventListener("put",e=>applyRemote(e.data));
+    fbStream.addEventListener("patch",e=>applyRemote(e.data));
+    fbStream.onopen=()=>setSyncUI("online","En vivo");
+    fbStream.onerror=()=>setSyncUI("error","Reconectando...");
+  }catch(e){
+    setSyncUI("error","Error URL");
+  }
+}
+
+function persist(skipRemote=false){
+  db.updatedAt=Date.now();
+  localStorage.setItem(STORAGE_KEY,JSON.stringify(db));
+  if(!skipRemote && fbUrl) pushToFirebase();
+}
+
+function note(t, minuteOverride=null){
+  const minute=minuteOverride===null ? matchMinute() : Number(minuteOverride);
+  db.timeline.unshift({
+    text:t,
+    period:db.period,
+    elapsed:getElapsedSeconds(),
+    minute,
+    time:nowTimeStr()
+  });
+  persist();
+  render();
+}
+
+function openPlayerStints(players, startSec){
+  db.playerMinutes=db.playerMinutes||{};
+  players.forEach(p=>{
+    if(!db.playerMinutes[p]) db.playerMinutes[p]={totalSec:0,inAt:null};
+    if(db.playerMinutes[p].inAt===null) db.playerMinutes[p].inAt=startSec;
+  });
+}
+function closePlayerStints(players, endSec){
+  db.playerMinutes=db.playerMinutes||{};
+  players.forEach(p=>{
+    const rec=db.playerMinutes[p];
+    if(rec && rec.inAt!==null){
+      rec.totalSec+=Math.max(0, endSec - rec.inAt);
+      rec.inAt=null;
+    }
+  });
+}
+function getLivePlayerSeconds(player){
+  const rec=(db.playerMinutes||{})[player];
+  if(!rec) return 0;
+  let total=rec.totalSec||0;
+  if(rec.inAt!==null){
+    const currentRef=db.running ? getElapsedSeconds() : (db.baseElapsed||0);
+    total+=Math.max(0, currentRef - rec.inAt);
+  }
+  return total;
+}
+
+function clockStart(){
+  if(db.running)return;
+  db.startedAt=Date.now();
+  db.running=true;
+  openPlayerStints(db.onField, db.baseElapsed||0);
+  ensureTicker();
+  persist();
+  render();
+}
+function stopClock(){
+  if(db.running){
+    db.baseElapsed=getElapsedSeconds();
+    db.startedAt=null;
+    db.running=false;
+    closePlayerStints(db.onField, db.baseElapsed);
+  }
+  ensureTicker();
+  persist();
+}
+
+function clearActiveMatchData(){
+  if(ticker){
+    clearInterval(ticker);
+    ticker=null;
+  }
+  db.period=1;
+  db.baseElapsed=0;
+  db.startedAt=null;
+  db.running=false;
+  db.phase=db.away ? "ready" : "pending";
+  db.homeScore=0;
+  db.awayScore=0;
+  db.onField=[];
+  db.playerMinutes={};
+  db.goals=[];
+  db.timeline=[];
+  persist();
+  render();
+}
+
+// AUTENTICACIÓN
+function setAuth(tab){
+  document.querySelectorAll("[data-auth]").forEach(b=>b.classList.toggle("active",b.dataset.auth===tab));
+  $("loginForm").classList.toggle("hidden",tab!=="login");
+  $("requestForm").classList.toggle("hidden",tab!=="request");
+  $("authMsg").innerHTML="";
+}
+document.querySelectorAll("[data-auth]").forEach(b=>b.onclick=()=>setAuth(b.dataset.auth));
+function authMsg(t,bad=false){$("authMsg").innerHTML='<div class="notice '+(bad?"err":"")+'">'+esc(t)+'</div>'}
+function isValidEmail(e){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)}
+
+$("loginBtn").onclick=()=>{
+  const rawInput=$("loginEmail").value.trim();
+  const idInput=rawInput.toLowerCase();
+  const pass=$("loginPass").value;
+  if(!idInput || !pass) return authMsg("Introduce tu usuario y contraseña.",true);
+
+  if(idInput===ADMIN_USER.toLowerCase() && pass===ADMIN_PASS){
+    db.users=normalizeUsers(db.users);
+    const root=db.users.find(u=>isMainAdminAccount(u)) || getMainAdminUser();
+    me={...root, name:rawInput};
+    enter();
+    return;
+  }
+
+  const u=db.users.find(x=>!isMainAdminAccount(x) && x.email && x.email.toLowerCase()===idInput && x.password===pass && x.approved);
+  if(!u) return authMsg("Usuario o contraseña incorrectos, o cuenta pendiente de aprobación.",true);
+  me=u;
+  enter();
+};
+
+$("requestBtn").onclick=()=>{
+  const name=$("reqName").value.trim();
+  const email=$("reqEmail").value.trim().toLowerCase();
+  const password=$("reqPass").value;
+  const password2=$("reqPass2").value;
+  if(!name||!email||!password||!password2) return authMsg("Completa todos los campos, incluida la repetición de contraseña.",true);
+  if(!isValidEmail(email)) return authMsg("Introduce un correo electrónico válido.",true);
+  if(password!==password2) return authMsg("Las contraseñas no coinciden.",true);
+  if(db.users.some(u=>u.email.toLowerCase()===email)||db.requests.some(r=>r.email.toLowerCase()===email)){
+    return authMsg("Ese correo electrónico ya está registrado o pendiente de solicitud.",true);
+  }
+  db.requests.push({name,email,password});
+  persist();
+  $("reqName").value="";$("reqEmail").value="";$("reqPass").value="";$("reqPass2").value="";
+  authMsg("Solicitud enviada. Un administrador deberá aprobarla.");
+};
+
+function switchView(viewName){
+  if(!isAdmin() && ["setup","users","stats"].includes(viewName)) viewName="live";
+  activeView=viewName;
+  document.querySelectorAll("[data-view]").forEach(x=>x.classList.toggle("active",x.dataset.view===viewName));
+  ["live","setup","users","history","stats"].forEach(v=>{
+    const sec=$("view-"+v);
+    if(sec) sec.classList.toggle("hidden",v!==viewName);
+  });
+  render();
+}
+
+function applyRoleUI(){
+  const admin=isAdmin();
+  $("who").textContent=fallbackUserName(me.email, me.name);
+  $("rolePill").textContent=admin?"ADMINISTRADOR":"USUARIO";
+  document.querySelectorAll(".admin-only:not([id^='view-'])").forEach(el=>el.classList.toggle("hidden",!admin));
+  if(!admin && ["setup","users","stats"].includes(activeView)){
+    switchView("live");
+  }
+}
+
+function enter(){
+  $("auth").classList.add("hidden");
+  $("app").classList.remove("hidden");
+  $("logout").classList.remove("hidden");
+  applyRoleUI();
+  switchView("live");
+  ensureTicker();
+}
+
+$("logout").onclick=()=>{
+  me=null;
+  activeView="live";
+  $("app").classList.add("hidden");
+  $("auth").classList.remove("hidden");
+  $("logout").classList.add("hidden");
+  $("who").textContent="";
+  $("loginPass").value="";
+};
+
+document.querySelectorAll("[data-view]").forEach(b=>b.onclick=()=>switchView(b.dataset.view));
+
+// RENDERIZADO GENERAL
+function render(){
+  const hasPendingRequests=Array.isArray(db.requests) && db.requests.length>0;
+  if($("usersTabBtn")){
+    $("usersTabBtn").classList.toggle("alert-tab", hasPendingRequests);
+    $("usersTabBtn").textContent=hasPendingRequests ? `Usuarios (${db.requests.length})` : "Usuarios";
+  }
+
+  $("panelTitle").textContent=db.home || "Nuestro equipo";
+  $("panelSubtitle").textContent="Seguimiento en directo";
+
+  $("homeName").textContent=db.home;
+  $("awayName").textContent=db.away||"Equipo visitante";
+  $("homeScore").textContent=db.homeScore;
+  $("awayScore").textContent=db.awayScore;
+  $("homeScoreLabel").textContent=db.home;
+  $("awayScoreLabel").textContent=db.away||"Visitante";
+  updateClockDisplay();
+
+  $("matchStatus").textContent=
+    db.phase==="finished"?"FINALIZADO":
+    db.phase==="break"?"DESCANSO":
+    db.running?"EN JUEGO":
+    db.phase==="ready"?"PREPARADO":"PARTIDO PENDIENTE";
+
+  $("startBtn").disabled=db.running||db.phase==="finished"||db.phase==="break"||db.period!==1;
+  $("breakBtn").disabled=!db.running||db.period!==1;
+  $("secondBtn").disabled=db.periods!==2||db.phase!=="break";
+  $("finishBtn").disabled=db.phase==="finished";
+
+  const canScore=Boolean(db.running);
+  $("homePlus").disabled=!canScore;
+  $("awayPlus").disabled=!canScore;
+  $("homeMinus").disabled=!canScore || db.homeScore<=0;
+  $("awayMinus").disabled=!canScore || db.awayScore<=0;
+
+  if(document.activeElement!==$("homeInput")) $("homeInput").value=db.home;
+  if(document.activeElement!==$("awayInput")) $("awayInput").value=db.away;
+  if(document.activeElement!==$("matchPeriods")) $("matchPeriods").value=db.periods;
+  if(document.activeElement!==$("matchDuration")) $("matchDuration").value=db.duration;
+
+  $("rosterCount").textContent=db.players.length+" / 25";
+  $("roster").innerHTML=db.players.map((p,i)=>
+    '<div class="item"><span>'+esc(p)+'</span><button class="danger sm" data-remove-player="'+i+'">Quitar</button></div>'
+  ).join("")||'<span class="muted">Añade los jugadores de la plantilla.</span>';
+
+  $("lineupAdmin").innerHTML=db.players.map(p=>{
+    const active=db.onField.includes(p);
+    return '<div class="item '+(active?"playing":"inactive")+'">'+
+      '<span>'+esc(p)+' '+(active?'<span class="pill">JUGANDO</span>':'<small>Banquillo</small>')+'</span>'+
+      '<button class="'+(active?"secondary":"outline")+' sm" data-toggle-player="'+encodeURIComponent(p)+'">'+
+      (active?"Registrar salida":"Poner en el campo")+'</button></div>';
+  }).join("")||'<span class="muted">No hay jugadores en la plantilla.</span>';
+
+  $("timeline").innerHTML=db.timeline.length?db.timeline.map(e=>{
+    const min=e.minute ?? Math.floor((e.elapsed||0)/60);
+    const clockTime=e.time || e.date || "--:--";
+    const partLabel=e.period===1?"1.ª parte":"2.ª parte";
+    return '<div class="event"><b>'+esc(clockTime)+' - '+min+'\'</b> <small class="muted">('+partLabel+')</small><br>'+esc(e.text)+'</div>';
+  }).join(""):'<span class="muted">Todavía no hay acontecimientos.</span>';
+
+  if(isAdmin()){
+    renderLiveStats();
+    renderSeasonStats();
+  }
+
+  $("requests").innerHTML=db.requests.length?db.requests.map((r,i)=>
+    '<div class="item"><span><b>'+esc(r.name)+'</b><br><small>'+esc(r.email)+'</small></span>'+
+    '<span class="row" style="flex:0 0 auto"><button class="sm" data-approve="'+i+'">Aprobar</button> <button class="danger sm" data-reject="'+i+'">Rechazar</button></span></div>'
+  ).join(""):'<span class="muted">No hay solicitudes pendientes.</span>';
+
+  $("usersList").innerHTML=db.users.map((u,i)=>{
+    const root=isMainAdminAccount(u);
+    const isSelf=me && ((root && isMainAdminAccount(me)) || (!root && u.email.toLowerCase()===me.email.toLowerCase()));
+    const displayName=root ? "DavidPR" : fallbackUserName(u.email, u.name);
+    const subtitle=root
+      ? "Cuenta principal · Permiso: Administrador"
+      : `${u.email} · Permiso: ${u.role==="admin"?"Administrador":"Usuario"}`;
+    return '<div class="item">'+
+      '<span><b>'+esc(displayName)+'</b> '+(isSelf?'<span class="pill green">TÚ</span>':'')+'<br><small>'+esc(subtitle)+'</small></span>'+
+      '<span class="row" style="flex:0 0 auto;flex-wrap:nowrap">'+
+        '<select data-user-role="'+i+'" style="margin:0;padding:7px 10px;width:auto" '+(isSelf||root?'disabled title="No se puede modificar este permiso"':'')+'>'+
+          '<option value="viewer" '+(u.role==="viewer"?"selected":"")+'>Usuario</option>'+
+          '<option value="admin" '+(u.role==="admin"?"selected":"")+'>Administrador</option>'+
+        '</select>'+
+        '<button class="danger sm" data-delete-user="'+i+'" '+(isSelf||root?'disabled title="No se puede eliminar esta cuenta"':'')+'>Eliminar</button>'+
+      '</span></div>';
+  }).join("");
+
+  $("historyList").innerHTML=db.history.length?db.history.map((h,i)=>
+    '<div class="item">'+
+      '<span><b>'+esc(h.home)+' '+h.hs+' - '+h.as+' '+esc(h.away)+'</b><br><small>'+esc(h.date)+(h.edits&&h.edits.length?" · Editado":"")+'</small></span>'+
+      '<span class="row" style="flex:0 0 auto">'+
+        '<button class="outline sm" data-detail="'+i+'">Detalle</button>'+
+        (isAdmin()?'<button class="secondary sm" data-edit="'+i+'">Editar</button><button class="danger sm" data-delete="'+i+'">Eliminar</button>':'')+
+      '</span></div>'
+  ).join(""):'<span class="muted">Todavía no hay partidos finalizados.</span>';
+}
+
+function renderLiveStats(){
+  const homeGoals=db.goals.filter(g=>g.team==="home");
+  const goalCounts={};
+  homeGoals.forEach(g=>{goalCounts[g.player]=(goalCounts[g.player]||0)+1;});
+  const scorers=Object.entries(goalCounts).sort((a,b)=>b[1]-a[1]);
+
+  const minsList=db.players.map(p=>({name:p,min:Math.floor(getLivePlayerSeconds(p)/60)}))
+    .filter(x=>x.min>0 || db.onField.includes(x.name))
+    .sort((a,b)=>b.min-a.min);
+
+  $("liveStats").innerHTML=
+    '<div class="stat-card"><h3>⚽ Goleadores del partido</h3>'+
+    (scorers.length?scorers.map(([p,c])=>'<div class="stat-row"><span>'+esc(p)+'</span><b>'+c+' '+(c===1?'gol':'goles')+'</b></div>').join(""):'<span class="muted" style="font-size:13px">Sin goles de '+esc(db.home)+' aún.</span>')+
+    '</div>'+
+    '<div class="stat-card"><h3>⏱️ Participación / Minutos</h3>'+
+    (minsList.length?minsList.map(x=>'<div class="stat-row"><span>'+esc(x.name)+'</span><b>'+x.min+'\'</b></div>').join(""):'<span class="muted" style="font-size:13px">Aún no ha comenzado el tiempo de juego.</span>')+
+    '</div>';
+}
+
+function renderSeasonStats(){
+  const totalGoals={};
+  const totalMins={};
+  const matchesPlayed={};
+
+  db.history.forEach(h=>{
+    (h.goals||[]).filter(g=>g.team==="home").forEach(g=>{
+      totalGoals[g.player]=(totalGoals[g.player]||0)+1;
+    });
+    if(h.playerStats){
+      Object.entries(h.playerStats).forEach(([p,sec])=>{
+        if(sec>0){
+          totalMins[p]=(totalMins[p]||0)+Math.floor(sec/60);
+          matchesPlayed[p]=(matchesPlayed[p]||0)+1;
+        }
+      });
+    }else if(Array.isArray(h.players)){
+      h.players.forEach(p=>{matchesPlayed[p]=(matchesPlayed[p]||0)+1;});
+    }
+  });
+
+  const topScorers=Object.entries(totalGoals).sort((a,b)=>b[1]-a[1]);
+  const allPlayers=new Set([...Object.keys(totalMins),...Object.keys(matchesPlayed)]);
+  const topPlayers=[...allPlayers].map(p=>({
+    name:p,
+    matches:matchesPlayed[p]||0,
+    mins:totalMins[p]||0
+  })).sort((a,b)=>b.mins-a.mins || b.matches-a.matches);
+
+  $("seasonStats").innerHTML=
+    '<div class="stat-card"><h3>🏆 Máximos goleadores</h3>'+
+    (topScorers.length?topScorers.map(([p,c])=>'<div class="stat-row"><span>'+esc(p)+'</span><b>'+c+' '+(c===1?'gol':'goles')+'</b></div>').join(""):'<span class="muted" style="font-size:13px">Finaliza partidos para acumular estadísticas.</span>')+
+    '</div>'+
+    '<div class="stat-card"><h3>📊 Partidos y minutos acumulados</h3>'+
+    (topPlayers.length?topPlayers.map(x=>'<div class="stat-row"><span>'+esc(x.name)+'</span><b>'+x.matches+' PJ · '+x.mins+'\'</b></div>').join(""):'<span class="muted" style="font-size:13px">Sin registros de participación aún.</span>')+
+    '</div>';
+}
+
+// ACCIONES DEL PARTIDO
+$("startBtn").onclick=()=>{
+  if(!isAdmin())return;
+  if(!db.away) return alert("Introduce el equipo visitante en Crear / configurar.");
+  if(db.phase==="pending"||db.phase==="ready"){
+    if(db.onField.length<5) return alert("Para iniciar el partido debe haber al menos 5 jugadores en el campo.");
+    db.phase="playing";
+    db.playerMinutes={};
+    note("Comienza el partido. Alineación inicial: "+db.onField.join(", "));
+    clockStart();
+  }
+};
+
+$("breakBtn").onclick=()=>{
+  if(!isAdmin())return;
+  stopClock();
+  db.phase="break";
+  note("Comienza el descanso");
+  render();
+};
+
+$("secondBtn").onclick=()=>{
+  if(!isAdmin())return;
+  if(db.phase!=="break")return;
+  if(db.onField.length<5) return alert("Para iniciar el segundo tiempo debe haber al menos 5 jugadores en el campo.");
+  db.period=2;
+  db.baseElapsed=0;
+  db.startedAt=null;
+  db.phase="playing";
+  note("Comienza la segunda parte. Jugadores que inician: "+db.onField.join(", "));
+  clockStart();
+};
+
+$("finishBtn").onclick=()=>{
+  if(!isAdmin())return;
+  const promptText=db.period===1&&db.periods===2
+    ?"El partido está en la primera parte. ¿Seguro que quieres finalizarlo?"
+    :"¿Seguro que quieres finalizar el partido?";
+  if(!confirm(promptText))return;
+  stopClock();
+  db.phase="finished";
+  note("Finaliza el partido");
+
+  const finalPlayerStats={};
+  db.players.forEach(p=>{
+    const s=getLivePlayerSeconds(p);
+    if(s>0 || db.onField.includes(p)) finalPlayerStats[p]=s;
+  });
+
+  db.history.unshift({
+    home:db.home,
+    away:db.away,
+    hs:db.homeScore,
+    as:db.awayScore,
+    date:new Date().toLocaleString("es-ES"),
+    period:db.period,
+    elapsed:getElapsedSeconds(),
+    players:[...db.onField],
+    playerStats:finalPlayerStats,
+    timeline:[...db.timeline],
+    goals:[...db.goals],
+    edits:[]
+  });
+  persist();
+  render();
+};
+
+$("clearActiveMatchBtn").onclick=()=>{
+  if(!isAdmin())return;
+  if(!confirm("¿Seguro que quieres limpiar los datos del partido activo? Se borrarán el marcador, el cronómetro, los goles, la línea de tiempo y las estadísticas del partido en vivo.")) return;
+  clearActiveMatchData();
+  alert("Datos del partido activo y estadísticas en vivo limpiados.");
+};
+
+function removeGoalWithConfirm(team){
+  if(!isAdmin() || !db.running)return;
+  const scoreKey=team+"Score";
+  if(db[scoreKey]<=0) return;
+  const teamName=team==="home"?db.home:(db.away||"Equipo visitante");
+  const goalIndex=[...db.goals].map((g,i)=>({g,i})).reverse().find(x=>x.g.team===team)?.i;
+  const lastGoal=goalIndex!==undefined ? db.goals[goalIndex] : null;
+  const detail=lastGoal && lastGoal.player ? ` (último registrado: ${lastGoal.player}, min ${lastGoal.minute}')` : "";
+
+  if(!confirm(`¿Seguro que quieres eliminar un gol de ${teamName}${detail}?`)) return;
+
+  db[scoreKey]=Math.max(0, db[scoreKey]-1);
+  if(goalIndex!==undefined) db.goals.splice(goalIndex,1);
+  note("Se elimina un gol de "+teamName+(lastGoal&&lastGoal.player?" ("+lastGoal.player+")":""));
+}
+
+$("homePlus").onclick=()=>{
+  if(!isAdmin() || !db.running)return;
+  if(!db.onField.length) return alert("No hay jugadores en el campo para seleccionar al goleador.");
+  $("goalScorer").innerHTML='<option value="">Seleccionar jugador</option>'+
+    db.onField.map(p=>'<option value="'+esc(p)+'">'+esc(p)+'</option>').join("");
+  $("goalModal").classList.remove("hidden");
+};
+$("cancelGoal").onclick=()=>$("goalModal").classList.add("hidden");
+$("goalModal").onclick=e=>{if(e.target===$("goalModal"))$("goalModal").classList.add("hidden")};
+$("confirmGoal").onclick=()=>{
+  if(!isAdmin() || !db.running)return;
+  const player=$("goalScorer").value;
+  if(!player) return alert("Selecciona al jugador que ha marcado.");
+  db.homeScore++;
+  db.goals.push({team:"home",player,minute:matchMinute()});
+  $("goalModal").classList.add("hidden");
+  note("Gol de "+player);
+};
+
+$("awayPlus").onclick=()=>{
+  if(!isAdmin() || !db.running)return;
+  db.awayScore++;
+  db.goals.push({team:"away",player:"Equipo rival",minute:matchMinute()});
+  note("Gol del equipo rival");
+};
+$("homeMinus").onclick=()=>removeGoalWithConfirm("home");
+$("awayMinus").onclick=()=>removeGoalWithConfirm("away");
+
+$("lineupAdmin").onclick=e=>{
+  if(!isAdmin())return;
+  const b=e.target.closest("[data-toggle-player]");
+  if(!b)return;
+  const p=decodeURIComponent(b.dataset.togglePlayer);
+  const beforeKickoff=db.phase==="pending"||db.phase==="ready";
+  const atHalfTime=db.phase==="break";
+  const currentSec=getElapsedSeconds();
+
+  if(db.onField.includes(p)){
+    db.onField=db.onField.filter(x=>x!==p);
+    if(db.running) closePlayerStints([p], currentSec);
+    if(!beforeKickoff && !atHalfTime && db.phase==="playing") note("Cambio: "+p+" sale del campo");
+  }else{
+    db.onField.push(p);
+    if(db.running) openPlayerStints([p], currentSec);
+    if(!beforeKickoff && !atHalfTime && db.phase==="playing") note("Cambio: "+p+" entra al campo");
+  }
+  persist();
+  render();
+};
+
+$("addPlayer").onclick=()=>{
+  if(!isAdmin())return;
+  const p=$("newPlayer").value.trim();
+  if(!p)return;
+  if(db.players.length>=25) return alert("La plantilla admite un máximo de 25 jugadores.");
+  if(db.players.some(x=>x.toLowerCase()===p.toLowerCase())) return alert("Ese jugador ya está en la plantilla.");
+  db.players.push(p);
+  $("newPlayer").value="";
+  persist();
+  render();
+};
+
+$("roster").onclick=e=>{
+  if(!isAdmin())return;
+  const b=e.target.closest("[data-remove-player]");
+  if(!b)return;
+  const i=+b.dataset.removePlayer, p=db.players[i];
+  if(!confirm("¿Quitar a "+p+" de la plantilla?"))return;
+  db.players.splice(i,1);
+  db.onField=db.onField.filter(x=>x!==p);
+  persist();
+  render();
+};
+
+$("saveHome").onclick=()=>{
+  if(!isAdmin())return;
+  const name=$("homeInput").value.trim();
+  if(!name) return alert("Escribe el nombre de nuestro equipo.");
+  db.home=name;
+  persist();
+  render();
+  alert("Nombre del equipo actualizado.");
+};
+
+$("prepareMatch").onclick=()=>{
+  if(!isAdmin())return;
+  const away=$("awayInput").value.trim();
+  if(!away) return alert("Escribe el nombre del equipo visitante.");
+  if(db.running) return alert("Detén el partido actual antes de preparar otro.");
+  db.away=away;
+  db.periods=+$("matchPeriods").value;
+  db.duration=Math.max(1,+$("matchDuration").value||25);
+  db.period=1;
+  db.baseElapsed=0;
+  db.startedAt=null;
+  db.running=false;
+  db.phase="ready";
+  db.homeScore=0;
+  db.awayScore=0;
+  db.onField=[];
+  db.playerMinutes={};
+  db.goals=[];
+  db.timeline=[];
+  ensureTicker();
+  persist();
+  render();
+  alert("Partido preparado. Selecciona los titulares en Partido en directo antes de iniciarlo.");
+};
+
+$("createUser").onclick=()=>{
+  if(!isAdmin())return;
+  const name=$("newUserName").value.trim();
+  const email=$("newUserEmail").value.trim().toLowerCase();
+  const password=$("newUserPass").value;
+  const password2=$("newUserPass2").value;
+  const role=$("newUserRole").value;
+
+  if(!name || !email || !password || !password2) return alert("Completa el nombre, el correo electrónico y ambos campos de contraseña.");
+  if(!isValidEmail(email)) return alert("Introduce un correo electrónico válido.");
+  if(password!==password2) return alert("Las contraseñas no coinciden.");
+  if(db.users.some(u=>u.email.toLowerCase()===email)) return alert("Ya existe un usuario con ese correo electrónico.");
+
+  db.users.push({name,email,password,role,approved:true});
+  $("newUserName").value="";
+  $("newUserEmail").value="";
+  $("newUserPass").value="";
+  $("newUserPass2").value="";
+  persist();
+  render();
+  alert("Usuario creado correctamente.");
+};
+
+$("requests").onclick=e=>{
+  if(!isAdmin())return;
+  const a=e.target.closest("[data-approve]"), r=e.target.closest("[data-reject]");
+  if(a){
+    const x=db.requests.splice(+a.dataset.approve,1)[0];
+    db.users.push({
+      name:fallbackUserName(x.email, x.name),
+      email:x.email,
+      password:x.password,
+      role:"viewer",
+      approved:true
+    });
+    persist();
+    render();
+  }
+  if(r){
+    db.requests.splice(+r.dataset.reject,1);
+    persist();
+    render();
+  }
+};
+
+$("usersList").onchange=e=>{
+  if(!isAdmin())return;
+  const sel=e.target.closest("[data-user-role]");
+  if(!sel)return;
+  const idx=+sel.dataset.userRole;
+  const target=db.users[idx];
+  if(!target)return;
+  if(isMainAdminAccount(target)){
+    sel.value="admin";
+    return alert("No se puede cambiar el rol del administrador principal.");
+  }
+  if(me && !isMainAdminAccount(me) && target.email.toLowerCase()===me.email.toLowerCase()){
+    sel.value=target.role;
+    return alert("No puedes cambiar tu propio tipo de permiso.");
+  }
+  const newRole=sel.value;
+  if(target.role==="admin" && newRole!=="admin"){
+    const adminCount=db.users.filter(u=>u.role==="admin").length;
+    if(adminCount<=1){
+      sel.value="admin";
+      return alert("Debe haber al menos un administrador registrado.");
+    }
+  }
+  target.role=newRole;
+  persist();
+  render();
+};
+
+$("usersList").onclick=e=>{
+  if(!isAdmin())return;
+  const btn=e.target.closest("[data-delete-user]");
+  if(!btn)return;
+  const idx=+btn.dataset.deleteUser;
+  const target=db.users[idx];
+  if(!target)return;
+  if(isMainAdminAccount(target)){
+    return alert("No puedes eliminar al administrador principal.");
+  }
+  if(me && !isMainAdminAccount(me) && target.email.toLowerCase()===me.email.toLowerCase()){
+    return alert("No puedes eliminar tu propio usuario mientras tienes la sesión iniciada.");
+  }
+  if(target.role==="admin"){
+    const adminCount=db.users.filter(u=>u.role==="admin").length;
+    if(adminCount<=1) return alert("No puedes eliminar al único administrador.");
+  }
+  const displayName=fallbackUserName(target.email, target.name);
+  if(!confirm(`¿Seguro que quieres eliminar al usuario ${displayName} (${target.email})?`)) return;
+  db.users.splice(idx,1);
+  persist();
+  render();
+};
+
+$("historyList").onclick=e=>{
+  const det=e.target.closest("[data-detail]");
+  if(det){
+    const h=db.history[+det.dataset.detail];
+    $("detailTitle").textContent=`${h.home} ${h.hs} - ${h.as} ${h.away}`;
+    const goalsHtml=(h.goals||[]).length
+      ?(h.goals||[]).map(g=>`<div class="stat-row"><span>${esc(g.player)} (${g.team==="home"?esc(h.home):esc(h.away)})</span><b>${g.minute}'</b></div>`).join("")
+      :'<span class="muted">Sin goles registrados.</span>';
+    const tlHtml=(h.timeline||[]).length
+      ?(h.timeline||[]).map(ev=>`<div class="event"><b>${esc(ev.time||ev.date||"--:--")} - ${ev.minute??0}'</b><br>${esc(ev.text)}</div>`).join("")
+      :'<span class="muted">Sin línea de tiempo.</span>';
+    $("detailBody").innerHTML=`<p class="muted">${esc(h.date)}</p><h3>Goles</h3>${goalsHtml}<hr><h3>Cronología</h3><div class="timeline">${tlHtml}</div>`;
+    $("detailModal").classList.remove("hidden");
+    return;
+  }
+
+  const del=e.target.closest("[data-delete]");
+  if(del){
+    if(!isAdmin())return;
+    const i=+del.dataset.delete, h=db.history[i];
+    if(!confirm("¿Eliminar definitivamente el partido "+h.home+" "+h.hs+"-"+h.as+" "+h.away+"?"))return;
+    if(!confirm("SEGUNDA CONFIRMACIÓN: esta acción no se puede deshacer. ¿Eliminar el partido del historial?"))return;
+    db.history.splice(i,1);
+    persist();
+    render();
+    return;
+  }
+
+  const b=e.target.closest("[data-edit]");
+  if(!b)return;
+  if(!isAdmin())return;
+  const h=db.history[+b.dataset.edit];
+  const hs=prompt("Nuevo resultado de "+h.home+":",h.hs);
+  if(hs===null)return;
+  const as=prompt("Nuevo resultado de "+h.away+":",h.as);
+  if(as===null)return;
+  const old=h.hs+"-"+h.as;
+  h.hs=Math.max(0,+hs||0);
+  h.as=Math.max(0,+as||0);
+  h.edits=h.edits||[];
+  h.edits.push({date:new Date().toLocaleString("es-ES"),from:old,to:h.hs+"-"+h.as,user:me.email});
+  persist();
+  render();
+};
+
+$("closeDetail").onclick=()=>$("detailModal").classList.add("hidden");
+$("detailModal").onclick=e=>{if(e.target===$("detailModal"))$("detailModal").classList.add("hidden")};
+
+connectFirebaseStream();
+ensureTicker();
+render();
+</script>
+</body>
+</html>
