@@ -53,13 +53,17 @@ label{display:block;color:var(--muted);font-size:13px}
 .scorebuttons button{width:52px;height:48px;padding:0;font-size:23px;border-radius:12px}
 .scorebuttons .minus{background:#292d34;color:#fff;border:1px solid #444a54}
 .list{display:grid;gap:8px}
+.lineup-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+.player-btn{min-height:66px;padding:9px 8px;border-radius:12px;font-size:14px;font-weight:850;line-height:1.25;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;text-align:center;word-break:break-word;overflow-wrap:anywhere}
+.player-btn .p-num{font-size:16px;font-weight:950;line-height:1.1;letter-spacing:.4px}
+.player-btn .p-name{font-size:13px;font-weight:800;line-height:1.2}
+.player-btn.on-field{background:#1f6f3b;color:#f3fff6;border:1px solid #56c97a}
+.player-btn.off-field{background:#7a2424;color:#fff3f3;border:1px solid #e06363}
 .item{padding:11px 12px;background:#0c0e11;border:1px solid var(--line);border-radius:11px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
 .item small{color:var(--muted)}
 .pill{font-size:11px;border-radius:30px;padding:4px 9px;background:#352a16;color:var(--accent2);white-space:nowrap;font-weight:700}
 .pill.green{background:#1b3822;color:var(--green)}
 .pill.gray{background:#252830;color:var(--muted)}
-.playing{border-color:#80601f;background:#1b170f}
-.inactive{opacity:.82}
 .timeline{position:relative;padding-left:18px}
 .timeline:before{content:"";position:absolute;left:5px;top:5px;bottom:5px;width:2px;background:#51401f}
 .event{position:relative;padding:0 0 15px 10px}
@@ -83,6 +87,7 @@ label{display:block;color:var(--muted);font-size:13px}
 .sync-dot.online{background:var(--green);box-shadow:0 0 8px var(--green)}
 .footer-actions{display:flex;justify-content:flex-end;margin-top:20px}
 @media(max-width:650px){
+  .lineup-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .actiongrid{grid-template-columns:1fr 1fr}
   .score-controls,.stats-grid{grid-template-columns:1fr}
   .card{padding:15px}
@@ -183,14 +188,14 @@ label{display:block;color:var(--muted);font-size:13px}
         <div class="clock" id="clock">00:00</div>
         <div class="period" id="periodLabel">1.ª parte · 25 minutos</div>
 
-        <div class="actiongrid admin-only" id="matchActions">
+        <div class="actiongrid live-editor-only" id="matchActions">
           <button id="startBtn">▶ Iniciar partido</button>
           <button id="breakBtn" class="secondary">Ⅱ Descanso</button>
           <button id="secondBtn" class="secondary">▶ Iniciar 2.º tiempo</button>
           <button id="finishBtn" class="danger">■ Finalizar</button>
         </div>
 
-        <div id="adminControls" class="admin-only">
+        <div id="adminControls" class="live-editor-only">
           <hr>
           <h2>Modificar marcador</h2>
           <div class="score-controls">
@@ -212,8 +217,8 @@ label{display:block;color:var(--muted);font-size:13px}
 
           <hr>
           <h2>Jugadores de nuestro equipo</h2>
-          <p class="hint">Antes de empezar, selecciona los titulares (mínimo 5). Durante el partido, registra los cambios.</p>
-          <div id="lineupAdmin" class="list"></div>
+          <p class="hint">Verde: jugando en el campo · Rojo: fuera del campo. Pulsa sobre un jugador para alternar su estado (mínimo 5 en el campo para iniciar).</p>
+          <div id="lineupAdmin" class="lineup-grid"></div>
         </div>
 
         <hr>
@@ -283,6 +288,7 @@ label{display:block;color:var(--muted);font-size:13px}
             <label>Permisos</label>
             <select id="newUserRole">
               <option value="viewer">Usuario</option>
+              <option value="narrator">Narrador</option>
               <option value="admin">Administrador</option>
             </select>
           </div>
@@ -307,7 +313,7 @@ label{display:block;color:var(--muted);font-size:13px}
 
         <hr>
         <h2>Usuarios registrados</h2>
-        <p class="hint">Gestiona los permisos (Usuario / Administrador) o elimina cuentas registradas.</p>
+        <p class="hint">Gestiona los permisos (Usuario / Narrador / Administrador) o elimina cuentas registradas.</p>
         <div id="usersList" class="list"></div>
       </div>
     </section>
@@ -405,6 +411,19 @@ function getMainAdminUser(displayLabel="DavidPR"){
   };
 }
 
+function normalizeRole(role){
+  if(role==="admin") return "admin";
+  if(role==="narrator") return "narrator";
+  return "viewer";
+}
+
+function roleLabel(role){
+  const r=normalizeRole(role);
+  if(r==="admin") return "ADMINISTRADOR";
+  if(r==="narrator") return "NARRADOR";
+  return "USUARIO";
+}
+
 let db={
   users:[getMainAdminUser()],
   requests:[],
@@ -440,7 +459,7 @@ function normalizeUsers(list){
       name:fallbackUserName(em, u.name),
       email:em,
       password:u.password,
-      role:u.role==="admin"?"admin":"viewer",
+      role:normalizeRole(u.role),
       approved:u.approved!==false
     };
   });
@@ -466,8 +485,17 @@ let fbStream=null;
 let isSyncingRemote=false;
 
 function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function splitPlayerLabel(label){
+  const str=String(label??"").trim();
+  const match=str.match(/^(\d+)(?:[\s.\-–—:]+)(.+)$/);
+  if(match){
+    return {num:match[1], name:match[2].trim()};
+  }
+  return {num:"", name:str};
+}
 function nowTimeStr(){return new Date().toLocaleTimeString("es-ES",{hour:"2-digit",minute:"2-digit"})}
-function isAdmin(){return Boolean(me && me.role==="admin")}
+function isAdmin(){return Boolean(me && normalizeRole(me.role)==="admin")}
+function canEditLive(){return Boolean(me && ["admin","narrator"].includes(normalizeRole(me.role)))}
 
 function getElapsedSeconds(){
   if(db.running && db.startedAt){
@@ -680,7 +708,7 @@ $("loginBtn").onclick=()=>{
 
   const u=db.users.find(x=>!isMainAdminAccount(x) && x.email && x.email.toLowerCase()===idInput && x.password===pass && x.approved);
   if(!u) return authMsg("Usuario o contraseña incorrectos, o cuenta pendiente de aprobación.",true);
-  me=u;
+  me={...u, role:normalizeRole(u.role)};
   enter();
 };
 
@@ -714,9 +742,11 @@ function switchView(viewName){
 
 function applyRoleUI(){
   const admin=isAdmin();
+  const liveEditor=canEditLive();
   $("who").textContent=fallbackUserName(me.email, me.name);
-  $("rolePill").textContent=admin?"ADMINISTRADOR":"USUARIO";
+  $("rolePill").textContent=roleLabel(me.role);
   document.querySelectorAll(".admin-only:not([id^='view-'])").forEach(el=>el.classList.toggle("hidden",!admin));
+  document.querySelectorAll(".live-editor-only").forEach(el=>el.classList.toggle("hidden",!liveEditor));
   if(!admin && ["setup","users","stats"].includes(activeView)){
     switchView("live");
   }
@@ -791,10 +821,11 @@ function render(){
 
   $("lineupAdmin").innerHTML=db.players.map(p=>{
     const active=db.onField.includes(p);
-    return '<div class="item '+(active?"playing":"inactive")+'">'+
-      '<span>'+esc(p)+' '+(active?'<span class="pill">JUGANDO</span>':'<small>Banquillo</small>')+'</span>'+
-      '<button class="'+(active?"secondary":"outline")+' sm" data-toggle-player="'+encodeURIComponent(p)+'">'+
-      (active?"Registrar salida":"Poner en el campo")+'</button></div>';
+    const parts=splitPlayerLabel(p);
+    const innerHtml=parts.num
+      ? '<span class="p-num">'+esc(parts.num)+'</span><span class="p-name">'+esc(parts.name)+'</span>'
+      : '<span class="p-name">'+esc(parts.name)+'</span>';
+    return '<button type="button" class="player-btn '+(active?"on-field":"off-field")+'" data-toggle-player="'+encodeURIComponent(p)+'" title="'+esc(p)+' - '+(active?"Jugando en el campo":"Fuera del campo")+'">'+innerHtml+'</button>';
   }).join("")||'<span class="muted">No hay jugadores en la plantilla.</span>';
 
   $("timeline").innerHTML=db.timeline.length?db.timeline.map(e=>{
@@ -816,17 +847,19 @@ function render(){
 
   $("usersList").innerHTML=db.users.map((u,i)=>{
     const root=isMainAdminAccount(u);
+    const currentRole=normalizeRole(u.role);
     const isSelf=me && ((root && isMainAdminAccount(me)) || (!root && u.email.toLowerCase()===me.email.toLowerCase()));
     const displayName=root ? "DavidPR" : fallbackUserName(u.email, u.name);
     const subtitle=root
       ? "Cuenta principal · Permiso: Administrador"
-      : `${u.email} · Permiso: ${u.role==="admin"?"Administrador":"Usuario"}`;
+      : `${u.email} · Permiso: ${currentRole==="admin"?"Administrador":currentRole==="narrator"?"Narrador":"Usuario"}`;
     return '<div class="item">'+
       '<span><b>'+esc(displayName)+'</b> '+(isSelf?'<span class="pill green">TÚ</span>':'')+'<br><small>'+esc(subtitle)+'</small></span>'+
       '<span class="row" style="flex:0 0 auto;flex-wrap:nowrap">'+
         '<select data-user-role="'+i+'" style="margin:0;padding:7px 10px;width:auto" '+(isSelf||root?'disabled title="No se puede modificar este permiso"':'')+'>'+
-          '<option value="viewer" '+(u.role==="viewer"?"selected":"")+'>Usuario</option>'+
-          '<option value="admin" '+(u.role==="admin"?"selected":"")+'>Administrador</option>'+
+          '<option value="viewer" '+(currentRole==="viewer"?"selected":"")+'>Usuario</option>'+
+          '<option value="narrator" '+(currentRole==="narrator"?"selected":"")+'>Narrador</option>'+
+          '<option value="admin" '+(currentRole==="admin"?"selected":"")+'>Administrador</option>'+
         '</select>'+
         '<button class="danger sm" data-delete-user="'+i+'" '+(isSelf||root?'disabled title="No se puede eliminar esta cuenta"':'')+'>Eliminar</button>'+
       '</span></div>';
@@ -901,7 +934,7 @@ function renderSeasonStats(){
 
 // ACCIONES DEL PARTIDO
 $("startBtn").onclick=()=>{
-  if(!isAdmin())return;
+  if(!canEditLive())return;
   if(!db.away) return alert("Introduce el equipo visitante en Crear / configurar.");
   if(db.phase==="pending"||db.phase==="ready"){
     if(db.onField.length<5) return alert("Para iniciar el partido debe haber al menos 5 jugadores en el campo.");
@@ -913,7 +946,7 @@ $("startBtn").onclick=()=>{
 };
 
 $("breakBtn").onclick=()=>{
-  if(!isAdmin())return;
+  if(!canEditLive())return;
   stopClock();
   db.phase="break";
   note("Comienza el descanso");
@@ -921,7 +954,7 @@ $("breakBtn").onclick=()=>{
 };
 
 $("secondBtn").onclick=()=>{
-  if(!isAdmin())return;
+  if(!canEditLive())return;
   if(db.phase!=="break")return;
   if(db.onField.length<5) return alert("Para iniciar el segundo tiempo debe haber al menos 5 jugadores en el campo.");
   db.period=2;
@@ -933,7 +966,7 @@ $("secondBtn").onclick=()=>{
 };
 
 $("finishBtn").onclick=()=>{
-  if(!isAdmin())return;
+  if(!canEditLive())return;
   const promptText=db.period===1&&db.periods===2
     ?"El partido está en la primera parte. ¿Seguro que quieres finalizarlo?"
     :"¿Seguro que quieres finalizar el partido?";
@@ -974,7 +1007,7 @@ $("clearActiveMatchBtn").onclick=()=>{
 };
 
 function removeGoalWithConfirm(team){
-  if(!isAdmin() || !db.running)return;
+  if(!canEditLive() || !db.running)return;
   const scoreKey=team+"Score";
   if(db[scoreKey]<=0) return;
   const teamName=team==="home"?db.home:(db.away||"Equipo visitante");
@@ -990,7 +1023,7 @@ function removeGoalWithConfirm(team){
 }
 
 $("homePlus").onclick=()=>{
-  if(!isAdmin() || !db.running)return;
+  if(!canEditLive() || !db.running)return;
   if(!db.onField.length) return alert("No hay jugadores en el campo para seleccionar al goleador.");
   $("goalScorer").innerHTML='<option value="">Seleccionar jugador</option>'+
     db.onField.map(p=>'<option value="'+esc(p)+'">'+esc(p)+'</option>').join("");
@@ -999,7 +1032,7 @@ $("homePlus").onclick=()=>{
 $("cancelGoal").onclick=()=>$("goalModal").classList.add("hidden");
 $("goalModal").onclick=e=>{if(e.target===$("goalModal"))$("goalModal").classList.add("hidden")};
 $("confirmGoal").onclick=()=>{
-  if(!isAdmin() || !db.running)return;
+  if(!canEditLive() || !db.running)return;
   const player=$("goalScorer").value;
   if(!player) return alert("Selecciona al jugador que ha marcado.");
   db.homeScore++;
@@ -1009,7 +1042,7 @@ $("confirmGoal").onclick=()=>{
 };
 
 $("awayPlus").onclick=()=>{
-  if(!isAdmin() || !db.running)return;
+  if(!canEditLive() || !db.running)return;
   db.awayScore++;
   db.goals.push({team:"away",player:"Equipo rival",minute:matchMinute()});
   note("Gol del equipo rival");
@@ -1018,7 +1051,7 @@ $("homeMinus").onclick=()=>removeGoalWithConfirm("home");
 $("awayMinus").onclick=()=>removeGoalWithConfirm("away");
 
 $("lineupAdmin").onclick=e=>{
-  if(!isAdmin())return;
+  if(!canEditLive())return;
   const b=e.target.closest("[data-toggle-player]");
   if(!b)return;
   const p=decodeURIComponent(b.dataset.togglePlayer);
@@ -1104,7 +1137,7 @@ $("createUser").onclick=()=>{
   const email=$("newUserEmail").value.trim().toLowerCase();
   const password=$("newUserPass").value;
   const password2=$("newUserPass2").value;
-  const role=$("newUserRole").value;
+  const role=normalizeRole($("newUserRole").value);
 
   if(!name || !email || !password || !password2) return alert("Completa el nombre, el correo electrónico y ambos campos de contraseña.");
   if(!isValidEmail(email)) return alert("Introduce un correo electrónico válido.");
@@ -1158,9 +1191,9 @@ $("usersList").onchange=e=>{
     sel.value=target.role;
     return alert("No puedes cambiar tu propio tipo de permiso.");
   }
-  const newRole=sel.value;
-  if(target.role==="admin" && newRole!=="admin"){
-    const adminCount=db.users.filter(u=>u.role==="admin").length;
+  const newRole=normalizeRole(sel.value);
+  if(normalizeRole(target.role)==="admin" && newRole!=="admin"){
+    const adminCount=db.users.filter(u=>normalizeRole(u.role)==="admin").length;
     if(adminCount<=1){
       sel.value="admin";
       return alert("Debe haber al menos un administrador registrado.");
@@ -1184,8 +1217,8 @@ $("usersList").onclick=e=>{
   if(me && !isMainAdminAccount(me) && target.email.toLowerCase()===me.email.toLowerCase()){
     return alert("No puedes eliminar tu propio usuario mientras tienes la sesión iniciada.");
   }
-  if(target.role==="admin"){
-    const adminCount=db.users.filter(u=>u.role==="admin").length;
+  if(normalizeRole(target.role)==="admin"){
+    const adminCount=db.users.filter(u=>normalizeRole(u.role)==="admin").length;
     if(adminCount<=1) return alert("No puedes eliminar al único administrador.");
   }
   const displayName=fallbackUserName(target.email, target.name);
