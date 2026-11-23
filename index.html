@@ -121,7 +121,7 @@ label{display:block;color:var(--muted);font-size:13px}
 
       <div id="loginForm">
         <label>Usuario o correo electrónico</label>
-        <input id="loginEmail" type="text" placeholder="Usuario o correo electrónico" autocomplete="username">
+        <input id="loginEmail" type="text" placeholder="Escribe tu usuario o correo electrónico" autocomplete="username">
         <label>Contraseña</label>
         <div class="pass-wrap">
           <input id="loginPass" type="password" placeholder="Contraseña" autocomplete="current-password">
@@ -277,8 +277,8 @@ label{display:block;color:var(--muted);font-size:13px}
         <h2>Crear nuevo usuario</h2>
         <div class="row">
           <div>
-            <label>Nombre y apellidos</label>
-            <input id="newUserName" placeholder="Nombre del usuario">
+            <label>Nombre o usuario</label>
+            <input id="newUserName" placeholder="Nombre o usuario">
           </div>
           <div>
             <label>Correo electrónico</label>
@@ -288,7 +288,7 @@ label{display:block;color:var(--muted);font-size:13px}
             <label>Permisos</label>
             <select id="newUserRole">
               <option value="viewer">Usuario</option>
-              <option value="narrator">Narrador</option>
+              <option value="narrador">Narrador</option>
               <option value="admin">Administrador</option>
             </select>
           </div>
@@ -412,15 +412,16 @@ function getMainAdminUser(displayLabel="DavidPR"){
 }
 
 function normalizeRole(role){
-  if(role==="admin") return "admin";
-  if(role==="narrator") return "narrator";
+  const r=String(role||"").toLowerCase().trim();
+  if(r==="admin") return "admin";
+  if(r==="narrador" || r==="narrator") return "narrador";
   return "viewer";
 }
 
 function roleLabel(role){
   const r=normalizeRole(role);
   if(r==="admin") return "ADMINISTRADOR";
-  if(r==="narrator") return "NARRADOR";
+  if(r==="narrador") return "NARRADOR";
   return "USUARIO";
 }
 
@@ -449,16 +450,17 @@ let db={
 
 function normalizeUsers(list){
   const legacyIds=["davidpr","davidpr@marcador.fc","davidperez@elgofondedavid.com","admin@marcador.fc"];
-  const mapped=(Array.isArray(list)?list:[]).map(u=>{
-    const checkStr=String(u.username||u.email||u.name||"").toLowerCase();
+  const rawList=Array.isArray(list)?list:(list && typeof list==="object"?Object.values(list):[]);
+  const mapped=rawList.filter(Boolean).map(u=>{
+    const checkStr=String(u.username||u.email||u.name||"").toLowerCase().trim();
     if(isMainAdminAccount(u) || legacyIds.includes(checkStr)){
       return getMainAdminUser(u.isRootAdmin ? u.name : "DavidPR");
     }
-    const em=u.email||(checkStr.includes("@")?checkStr:checkStr+"@marcador.fc");
+    const em=String(u.email||(checkStr.includes("@")?checkStr:checkStr+"@marcador.fc")).trim();
     return {
       name:fallbackUserName(em, u.name),
       email:em,
-      password:u.password,
+      password:u.password!==undefined && u.password!==null ? String(u.password) : "",
       role:normalizeRole(u.role),
       approved:u.approved!==false
     };
@@ -483,6 +485,7 @@ let activeView="live";
 const fbUrl=DEFAULT_FB_URL.replace(/\/+$/,"");
 let fbStream=null;
 let isSyncingRemote=false;
+let hasLoadedRemote=false;
 
 function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 function splitPlayerLabel(label){
@@ -495,7 +498,7 @@ function splitPlayerLabel(label){
 }
 function nowTimeStr(){return new Date().toLocaleTimeString("es-ES",{hour:"2-digit",minute:"2-digit"})}
 function isAdmin(){return Boolean(me && normalizeRole(me.role)==="admin")}
-function canEditLive(){return Boolean(me && ["admin","narrator"].includes(normalizeRole(me.role)))}
+function canEditLive(){return Boolean(me && ["admin","narrador"].includes(normalizeRole(me.role)))}
 
 function getElapsedSeconds(){
   if(db.running && db.startedAt){
@@ -533,6 +536,47 @@ function setSyncUI(status, text){
   lbl.textContent=text;
 }
 
+function applyRemoteState(remote, forceApply=false){
+  if(!remote || typeof remote!=="object") return;
+  if(forceApply || !hasLoadedRemote || (remote.updatedAt||0) >= (db.updatedAt||0)){
+    hasLoadedRemote=true;
+    isSyncingRemote=true;
+    db={...db,...remote};
+    db.users=normalizeUsers(db.users);
+    db.requests=Array.isArray(db.requests)?db.requests:[];
+    db.players=Array.isArray(db.players)?db.players:[];
+    db.onField=Array.isArray(db.onField)?db.onField:[];
+    db.goals=Array.isArray(db.goals)?db.goals:[];
+    db.timeline=Array.isArray(db.timeline)?db.timeline:[];
+    db.history=Array.isArray(db.history)?db.history:[];
+    localStorage.setItem(STORAGE_KEY,JSON.stringify(db));
+    if(me){
+      const updatedMe=isMainAdminAccount(me)
+        ? db.users.find(u=>isMainAdminAccount(u))
+        : db.users.find(u=>String(u.email||"").toLowerCase().trim()===String(me.email||"").toLowerCase().trim());
+      if(!updatedMe){$("logout").onclick();return;}
+      me={...updatedMe, name: isMainAdminAccount(me) ? me.name : updatedMe.name};
+      applyRoleUI();
+    }
+    ensureTicker();
+    render();
+    isSyncingRemote=false;
+  }
+}
+
+async function fetchInitialFromFirebase(){
+  if(!fbUrl) return;
+  try{
+    const res=await fetch(fbUrl+"/marcador_fc_state.json",{cache:"no-store"});
+    if(!res.ok) return;
+    const remote=await res.json();
+    if(remote && typeof remote==="object"){
+      applyRemoteState(remote, true);
+      setSyncUI("online","En vivo");
+    }
+  }catch(e){}
+}
+
 async function pushToFirebase(){
   if(!fbUrl || isSyncingRemote) return;
   try{
@@ -552,6 +596,7 @@ async function pushToFirebase(){
 function connectFirebaseStream(){
   if(fbStream){fbStream.close();fbStream=null;}
   if(!fbUrl){setSyncUI("local","Local");return;}
+  fetchInitialFromFirebase();
   try{
     setSyncUI("online","Conectando...");
     fbStream=new EventSource(fbUrl+"/marcador_fc_state.json");
@@ -559,30 +604,7 @@ function connectFirebaseStream(){
       if(!raw)return;
       let parsed=JSON.parse(raw);
       let remote=parsed && parsed.data!==undefined ? parsed.data : parsed;
-      if(!remote || typeof remote!=="object")return;
-      if((remote.updatedAt||0) > (db.updatedAt||0)){
-        isSyncingRemote=true;
-        db={...db,...remote};
-        db.users=normalizeUsers(db.users);
-        db.requests=Array.isArray(db.requests)?db.requests:[];
-        db.players=Array.isArray(db.players)?db.players:[];
-        db.onField=Array.isArray(db.onField)?db.onField:[];
-        db.goals=Array.isArray(db.goals)?db.goals:[];
-        db.timeline=Array.isArray(db.timeline)?db.timeline:[];
-        db.history=Array.isArray(db.history)?db.history:[];
-        localStorage.setItem(STORAGE_KEY,JSON.stringify(db));
-        if(me){
-          const updatedMe=isMainAdminAccount(me)
-            ? db.users.find(u=>isMainAdminAccount(u))
-            : db.users.find(u=>u.email.toLowerCase()===me.email.toLowerCase());
-          if(!updatedMe){$("logout").onclick();return;}
-          me={...updatedMe, name: isMainAdminAccount(me) ? me.name : updatedMe.name};
-          applyRoleUI();
-        }
-        ensureTicker();
-        render();
-        isSyncingRemote=false;
-      }
+      applyRemoteState(remote, false);
       setSyncUI("online","En vivo");
     };
     fbStream.addEventListener("put",e=>applyRemote(e.data));
@@ -692,11 +714,22 @@ document.querySelectorAll("[data-auth]").forEach(b=>b.onclick=()=>setAuth(b.data
 function authMsg(t,bad=false){$("authMsg").innerHTML='<div class="notice '+(bad?"err":"")+'">'+esc(t)+'</div>'}
 function isValidEmail(e){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)}
 
-$("loginBtn").onclick=()=>{
+function findMatchingUser(idInput, pass){
+  return db.users.find(x=>{
+    if(isMainAdminAccount(x) || x.approved===false) return false;
+    if(String(x.password??"")!==String(pass)) return false;
+    const emailNorm=String(x.email||"").toLowerCase().trim();
+    const nameNorm=String(x.name||"").toLowerCase().trim();
+    const prefixNorm=emailNorm.includes("@") ? emailNorm.split("@")[0] : "";
+    return idInput===emailNorm || (nameNorm && idInput===nameNorm) || (prefixNorm && idInput===prefixNorm);
+  });
+}
+
+$("loginBtn").onclick=async ()=>{
   const rawInput=$("loginEmail").value.trim();
   const idInput=rawInput.toLowerCase();
   const pass=$("loginPass").value;
-  if(!idInput || !pass) return authMsg("Introduce tu usuario y contraseña.",true);
+  if(!idInput || !pass) return authMsg("Introduce tu usuario o correo electrónico y contraseña.",true);
 
   if(idInput===ADMIN_USER.toLowerCase() && pass===ADMIN_PASS){
     db.users=normalizeUsers(db.users);
@@ -706,8 +739,12 @@ $("loginBtn").onclick=()=>{
     return;
   }
 
-  const u=db.users.find(x=>!isMainAdminAccount(x) && x.email && x.email.toLowerCase()===idInput && x.password===pass && x.approved);
-  if(!u) return authMsg("Usuario o contraseña incorrectos, o cuenta pendiente de aprobación.",true);
+  let u=findMatchingUser(idInput, pass);
+  if(!u && fbUrl){
+    await fetchInitialFromFirebase();
+    u=findMatchingUser(idInput, pass);
+  }
+  if(!u) return authMsg("Usuario, correo electrónico o contraseña incorrectos, o cuenta pendiente de aprobación.",true);
   me={...u, role:normalizeRole(u.role)};
   enter();
 };
@@ -852,13 +889,13 @@ function render(){
     const displayName=root ? "DavidPR" : fallbackUserName(u.email, u.name);
     const subtitle=root
       ? "Cuenta principal · Permiso: Administrador"
-      : `${u.email} · Permiso: ${currentRole==="admin"?"Administrador":currentRole==="narrator"?"Narrador":"Usuario"}`;
+      : `${u.email} · Permiso: ${currentRole==="admin"?"Administrador":currentRole==="narrador"?"Narrador":"Usuario"}`;
     return '<div class="item">'+
       '<span><b>'+esc(displayName)+'</b> '+(isSelf?'<span class="pill green">TÚ</span>':'')+'<br><small>'+esc(subtitle)+'</small></span>'+
       '<span class="row" style="flex:0 0 auto;flex-wrap:nowrap">'+
         '<select data-user-role="'+i+'" style="margin:0;padding:7px 10px;width:auto" '+(isSelf||root?'disabled title="No se puede modificar este permiso"':'')+'>'+
           '<option value="viewer" '+(currentRole==="viewer"?"selected":"")+'>Usuario</option>'+
-          '<option value="narrator" '+(currentRole==="narrator"?"selected":"")+'>Narrador</option>'+
+          '<option value="narrador" '+(currentRole==="narrador"?"selected":"")+'>Narrador</option>'+
           '<option value="admin" '+(currentRole==="admin"?"selected":"")+'>Administrador</option>'+
         '</select>'+
         '<button class="danger sm" data-delete-user="'+i+'" '+(isSelf||root?'disabled title="No se puede eliminar esta cuenta"':'')+'>Eliminar</button>'+
@@ -1139,7 +1176,7 @@ $("createUser").onclick=()=>{
   const password2=$("newUserPass2").value;
   const role=normalizeRole($("newUserRole").value);
 
-  if(!name || !email || !password || !password2) return alert("Completa el nombre, el correo electrónico y ambos campos de contraseña.");
+  if(!name || !email || !password || !password2) return alert("Completa el nombre o usuario, el correo electrónico y ambos campos de contraseña.");
   if(!isValidEmail(email)) return alert("Introduce un correo electrónico válido.");
   if(password!==password2) return alert("Las contraseñas no coinciden.");
   if(db.users.some(u=>u.email.toLowerCase()===email)) return alert("Ya existe un usuario con ese correo electrónico.");
