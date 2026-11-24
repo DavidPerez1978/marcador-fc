@@ -626,15 +626,39 @@ function applyRemoteState(remote, forceApply=false){
   if(forceApply || !hasLoadedRemote || (remote.updatedAt||0) >= (db.updatedAt||0)){
     hasLoadedRemote=true;
     isSyncingRemote=true;
-    db={...db,...remote};
+    const nextPhase=remote.phase || "pending";
+    const isClearedState=(nextPhase==="pending" || nextPhase==="ready") &&
+      (remote.homeScore||0)===0 && (remote.awayScore||0)===0 && !Array.isArray(remote.timeline);
+
+    db={
+      ...db,
+      ...remote,
+      period:remote.period ?? 1,
+      baseElapsed:remote.baseElapsed ?? 0,
+      startedAt:remote.startedAt ?? null,
+      running:Boolean(remote.running),
+      phase:nextPhase,
+      homeScore:remote.homeScore ?? 0,
+      awayScore:remote.awayScore ?? 0,
+      onField:Array.isArray(remote.onField)?remote.onField:[],
+      playerMinutes:(remote.playerMinutes && typeof remote.playerMinutes==="object")?remote.playerMinutes:{},
+      goals:Array.isArray(remote.goals)?remote.goals:[],
+      timeline:Array.isArray(remote.timeline)?remote.timeline:[],
+      history:Array.isArray(remote.history)?remote.history:[]
+    };
+    if(isClearedState){
+      db.baseElapsed=0;
+      db.startedAt=null;
+      db.running=false;
+      db.onField=[];
+      db.playerMinutes={};
+      db.goals=[];
+      db.timeline=[];
+    }
     db.users=normalizeUsers(db.users);
     db.requests=Array.isArray(db.requests)?db.requests:[];
     db.players=Array.isArray(db.players)?db.players:[];
-    db.onField=Array.isArray(db.onField)?db.onField:[];
     syncCalledUpWithPlayers();
-    db.goals=Array.isArray(db.goals)?db.goals:[];
-    db.timeline=Array.isArray(db.timeline)?db.timeline:[];
-    db.history=Array.isArray(db.history)?db.history:[];
     localStorage.setItem(STORAGE_KEY,JSON.stringify(db));
     if(me){
       if(me.isGuest){
@@ -665,7 +689,7 @@ function applyRemoteState(remote, forceApply=false){
 async function fetchInitialFromFirebase(){
   if(!fbUrl) return;
   try{
-    const res=await fetch(fbUrl+"/marcador_fc_state.json",{cache:"no-store"});
+    const res=await fetch(`${fbUrl}/marcador_fc_state.json?t=${Date.now()}`,{cache:"no-store"});
     if(!res.ok) return;
     const remote=await res.json();
     if(remote && typeof remote==="object"){
@@ -834,7 +858,7 @@ function findMatchingUser(idInput, pass){
   });
 }
 
-$("guestBtn").onclick=()=>{
+$("guestBtn").onclick=async ()=>{
   me={
     id:"guest_session",
     isGuest:true,
@@ -844,6 +868,7 @@ $("guestBtn").onclick=()=>{
     approved:true
   };
   enter();
+  await fetchInitialFromFirebase();
 };
 
 $("loginBtn").onclick=async ()=>{
