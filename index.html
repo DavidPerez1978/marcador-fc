@@ -613,11 +613,19 @@ function applyRemoteState(remote, forceApply=false){
     db.history=Array.isArray(db.history)?db.history:[];
     localStorage.setItem(STORAGE_KEY,JSON.stringify(db));
     if(me){
-      const updatedMe=isMainAdminAccount(me)
-        ? db.users.find(u=>isMainAdminAccount(u))
-        : db.users.find(u=>String(u.email||"").toLowerCase().trim()===String(me.email||"").toLowerCase().trim());
-      if(!updatedMe){$("logout").onclick();return;}
-      me={...updatedMe, name: isMainAdminAccount(me) ? me.name : updatedMe.name};
+      if(me.isGuest){
+        me={...me, role:"viewer"};
+      }else if(isMainAdminAccount(me)){
+        const root=db.users.find(u=>isMainAdminAccount(u));
+        me={...me, ...(root||{}), name:me.name || (root&&root.name) || "DavidPR", role:"admin"};
+      }else{
+        const updatedMe=db.users.find(u=>String(u.email||"").toLowerCase().trim()===String(me.email||"").toLowerCase().trim());
+        if(updatedMe){
+          me={...me, name:updatedMe.name || me.name, role:normalizeRole(updatedMe.role)};
+        }else{
+          me={...me, role:normalizeRole(me.role)};
+        }
+      }
       applyRoleUI();
     }
     ensureTicker();
