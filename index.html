@@ -395,6 +395,7 @@ label{display:block;color:var(--muted);font-size:13px}
 <script>
 const $=id=>document.getElementById(id);
 const STORAGE_KEY="marcadorFC_v5";
+const SESSION_KEY="marcadorFC_session_v1";
 const DEFAULT_FB_URL="https://temporizador-real-default-rtdb.firebaseio.com";
 const MAIN_ADMIN_ID="admin_root";
 const ADMIN_USER="davidpr";
@@ -534,6 +535,24 @@ let fbStream=null;
 let isSyncingRemote=false;
 let hasLoadedRemote=false;
 
+function saveSession(){
+  try{
+    if(me) sessionStorage.setItem(SESSION_KEY, JSON.stringify(me));
+    else sessionStorage.removeItem(SESSION_KEY);
+  }catch(e){}
+}
+
+function loadSession(){
+  try{
+    const raw=sessionStorage.getItem(SESSION_KEY);
+    if(!raw) return null;
+    const parsed=JSON.parse(raw);
+    return parsed && typeof parsed==="object" ? parsed : null;
+  }catch(e){
+    return null;
+  }
+}
+
 function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 function formatMatchDate(isoDate){
   const raw=String(isoDate||"").trim();
@@ -597,8 +616,13 @@ function setSyncUI(status, text){
   lbl.textContent=text;
 }
 
+function isRootMatchState(obj){
+  if(!obj || typeof obj!=="object" || Array.isArray(obj)) return false;
+  return ("home" in obj) || ("phase" in obj) || ("homeScore" in obj) || ("updatedAt" in obj);
+}
+
 function applyRemoteState(remote, forceApply=false){
-  if(!remote || typeof remote!=="object") return;
+  if(!isRootMatchState(remote)) return;
   if(forceApply || !hasLoadedRemote || (remote.updatedAt||0) >= (db.updatedAt||0)){
     hasLoadedRemote=true;
     isSyncingRemote=true;
@@ -626,6 +650,10 @@ function applyRemoteState(remote, forceApply=false){
           me={...me, role:normalizeRole(me.role)};
         }
       }
+      saveSession();
+      $("auth").classList.add("hidden");
+      $("app").classList.remove("hidden");
+      $("logout").classList.remove("hidden");
       applyRoleUI();
     }
     ensureTicker();
@@ -672,10 +700,21 @@ function connectFirebaseStream(){
     fbStream=new EventSource(fbUrl+"/marcador_fc_state.json");
     const applyRemote=(raw)=>{
       if(!raw)return;
-      let parsed=JSON.parse(raw);
-      let remote=parsed && parsed.data!==undefined ? parsed.data : parsed;
-      applyRemoteState(remote, false);
-      setSyncUI("online","En vivo");
+      try{
+        const parsed=JSON.parse(raw);
+        if(parsed && typeof parsed==="object" && "path" in parsed){
+          if(parsed.path!=="/" || !isRootMatchState(parsed.data)){
+            fetchInitialFromFirebase();
+            return;
+          }
+          applyRemoteState(parsed.data, false);
+        }else if(isRootMatchState(parsed)){
+          applyRemoteState(parsed, false);
+        }
+        setSyncUI("online","En vivo");
+      }catch(err){
+        fetchInitialFromFirebase();
+      }
     };
     fbStream.addEventListener("put",e=>applyRemote(e.data));
     fbStream.addEventListener("patch",e=>applyRemote(e.data));
@@ -872,6 +911,7 @@ function applyRoleUI(){
 }
 
 function enter(){
+  saveSession();
   $("auth").classList.add("hidden");
   $("app").classList.remove("hidden");
   $("logout").classList.remove("hidden");
@@ -882,6 +922,7 @@ function enter(){
 
 $("logout").onclick=()=>{
   me=null;
+  saveSession();
   activeView="live";
   $("app").classList.add("hidden");
   $("auth").classList.remove("hidden");
@@ -1449,6 +1490,11 @@ $("historyList").onclick=e=>{
 $("closeDetail").onclick=()=>$("detailModal").classList.add("hidden");
 $("detailModal").onclick=e=>{if(e.target===$("detailModal"))$("detailModal").classList.add("hidden")};
 
+const restoredMe=loadSession();
+if(restoredMe){
+  me=restoredMe;
+  enter();
+}
 connectFirebaseStream();
 ensureTicker();
 render();
