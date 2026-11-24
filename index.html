@@ -30,6 +30,8 @@ button.outline{background:transparent;border:1px solid var(--accent);color:var(-
 button.guest-btn{width:100%;margin-bottom:16px;background:linear-gradient(135deg,#162c29 0%,#10201e 100%);border:1px solid rgba(73,182,156,.48);color:#8ce8d0;font-weight:800;letter-spacing:.2px;box-shadow:inset 0 1px 0 rgba(255,255,255,.06)}
 button.guest-btn:hover{border-color:#7ce0c8;background:linear-gradient(135deg,#1d3b37 0%,#142826 100%);filter:none}
 button.danger{background:#542a2a;color:#ffe8e8}
+button.conv-btn.is-called{background:#1f6f3b;color:#f3fff6;border:1px solid #56c97a}
+button.conv-btn.is-uncalled{background:#7a2424;color:#fff3f3;border:1px solid #e06363}
 button.sm{padding:7px 11px;font-size:13px;border-radius:9px}
 input,select{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;background:#0b0d10;color:var(--white);margin:6px 0 14px}
 input[type="date"],input[type="time"]{color-scheme:dark}
@@ -63,6 +65,8 @@ label{display:block;color:var(--muted);font-size:13px}
 .player-btn .p-name{font-size:13px;font-weight:800;line-height:1.2}
 .player-btn.on-field{background:#1f6f3b;color:#f3fff6;border:1px solid #56c97a}
 .player-btn.off-field{background:#7a2424;color:#fff3f3;border:1px solid #e06363}
+.player-btn.uncalled{background:#262930;color:#8e939d;border:1px solid #3c414b;cursor:not-allowed;opacity:.68}
+.player-btn.uncalled:hover{filter:none;transform:none}
 .item{padding:11px 12px;background:#0c0e11;border:1px solid var(--line);border-radius:11px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
 .item small{color:var(--muted)}
 .pill{font-size:11px;border-radius:30px;padding:4px 9px;background:#352a16;color:var(--accent2);white-space:nowrap;font-weight:700}
@@ -223,13 +227,16 @@ label{display:block;color:var(--muted);font-size:13px}
 
           <hr>
           <h2>Jugadores de nuestro equipo</h2>
-          <p class="hint">Verde: jugando en el campo · Rojo: fuera del campo. Pulsa sobre un jugador para alternar su estado (mínimo 5 en el campo para iniciar).</p>
           <div id="lineupAdmin" class="lineup-grid"></div>
         </div>
 
         <hr>
         <h2>Línea de tiempo del partido</h2>
         <div id="timeline" class="timeline"><span class="muted">Todavía no hay acontecimientos.</span></div>
+
+        <div class="footer-actions admin-only" id="liveBottomActions">
+          <button id="clearActiveMatchBtn" class="danger">Limpiar partido actual</button>
+        </div>
       </div>
     </section>
 
@@ -358,10 +365,6 @@ label{display:block;color:var(--muted);font-size:13px}
         <div class="stats-grid" id="seasonStats"></div>
       </div>
     </section>
-
-    <div class="footer-actions admin-only" id="bottomActions">
-      <button id="clearActiveMatchBtn" class="danger">Limpiar partido activo</button>
-    </div>
   </section>
 </main>
 
@@ -450,6 +453,7 @@ let db={
   requests:[],
   home:"Nuestro equipo",
   players:["Jugador 1","Jugador 2","Jugador 3","Jugador 4","Jugador 5"],
+  calledUp:{},
   away:"",
   matchDate:"",
   matchTime:"",
@@ -470,6 +474,25 @@ let db={
   history:[],
   updatedAt:0
 };
+
+function isPlayerCalledUp(player){
+  if(!db.calledUp || typeof db.calledUp!=="object") return true;
+  if(db.calledUp[player]===undefined) return true;
+  return db.calledUp[player]!==false;
+}
+
+function syncCalledUpWithPlayers(){
+  if(!Array.isArray(db.players)) db.players=[];
+  if(!db.calledUp || typeof db.calledUp!=="object") db.calledUp={};
+  const nextCalled={};
+  db.players.forEach(p=>{
+    nextCalled[p]=db.calledUp[p]!==false;
+  });
+  db.calledUp=nextCalled;
+  if(Array.isArray(db.onField)){
+    db.onField=db.onField.filter(p=>db.players.includes(p) && nextCalled[p]!==false);
+  }
+}
 
 function normalizeUsers(list){
   const legacyIds=["davidpr","davidpr@marcador.fc","davidperez@elgofondedavid.com","admin@marcador.fc"];
@@ -498,6 +521,7 @@ try{
   if(saved){
     db={...db,...saved};
     db.users=normalizeUsers(db.users);
+    syncCalledUpWithPlayers();
     if(typeof saved.elapsed==="number" && saved.baseElapsed===undefined) db.baseElapsed=saved.elapsed;
   }
 }catch(e){}
@@ -583,6 +607,7 @@ function applyRemoteState(remote, forceApply=false){
     db.requests=Array.isArray(db.requests)?db.requests:[];
     db.players=Array.isArray(db.players)?db.players:[];
     db.onField=Array.isArray(db.onField)?db.onField:[];
+    syncCalledUpWithPlayers();
     db.goals=Array.isArray(db.goals)?db.goals:[];
     db.timeline=Array.isArray(db.timeline)?db.timeline:[];
     db.history=Array.isArray(db.history)?db.history:[];
@@ -920,17 +945,25 @@ function render(){
   if(document.activeElement!==$("matchDuration")) $("matchDuration").value=db.duration;
 
   $("rosterCount").textContent=db.players.length+" / 25";
-  $("roster").innerHTML=db.players.map((p,i)=>
-    '<div class="item"><span>'+esc(p)+'</span><button class="danger sm" data-remove-player="'+i+'">Quitar</button></div>'
-  ).join("")||'<span class="muted">Añade los jugadores de la plantilla.</span>';
+  $("roster").innerHTML=db.players.map((p,i)=>{
+    const called=isPlayerCalledUp(p);
+    return '<div class="item"><span>'+esc(p)+'</span>'+
+      '<span class="row" style="flex:0 0 auto;flex-wrap:nowrap">'+
+        '<button type="button" class="sm conv-btn '+(called?"is-called":"is-uncalled")+'" data-toggle-called="'+i+'">'+(called?"Convocado":"Desconvocado")+'</button>'+
+        '<button type="button" class="danger sm" data-remove-player="'+i+'">Quitar</button>'+
+      '</span></div>';
+  }).join("")||'<span class="muted">Añade los jugadores de la plantilla.</span>';
 
   $("lineupAdmin").innerHTML=db.players.map(p=>{
-    const active=db.onField.includes(p);
+    const called=isPlayerCalledUp(p);
+    const active=called && db.onField.includes(p);
     const parts=splitPlayerLabel(p);
+    const stateClass=!called ? "uncalled" : (active ? "on-field" : "off-field");
+    const titleText=!called ? (p+" - Desconvocado") : (p+" - "+(active?"Jugando en el campo":"Fuera del campo"));
     const innerHtml=parts.num
       ? '<span class="p-num">'+esc(parts.num)+'</span><span class="p-name">'+esc(parts.name)+'</span>'
       : '<span class="p-name">'+esc(parts.name)+'</span>';
-    return '<button type="button" class="player-btn '+(active?"on-field":"off-field")+'" data-toggle-player="'+encodeURIComponent(p)+'" title="'+esc(p)+' - '+(active?"Jugando en el campo":"Fuera del campo")+'">'+innerHtml+'</button>';
+    return '<button type="button" class="player-btn '+stateClass+'" data-toggle-player="'+encodeURIComponent(p)+'" '+(called?'':'disabled aria-disabled="true"')+' title="'+esc(titleText)+'">'+innerHtml+'</button>';
   }).join("")||'<span class="muted">No hay jugadores en la plantilla.</span>';
 
   $("timeline").innerHTML=db.timeline.length?db.timeline.map(e=>{
@@ -1160,6 +1193,7 @@ $("lineupAdmin").onclick=e=>{
   const b=e.target.closest("[data-toggle-player]");
   if(!b)return;
   const p=decodeURIComponent(b.dataset.togglePlayer);
+  if(!isPlayerCalledUp(p)) return;
   const beforeKickoff=db.phase==="pending"||db.phase==="ready";
   const atHalfTime=db.phase==="break";
   const currentSec=getElapsedSeconds();
@@ -1184,6 +1218,8 @@ $("addPlayer").onclick=()=>{
   if(db.players.length>=25) return alert("La plantilla admite un máximo de 25 jugadores.");
   if(db.players.some(x=>x.toLowerCase()===p.toLowerCase())) return alert("Ese jugador ya está en la plantilla.");
   db.players.push(p);
+  db.calledUp=db.calledUp||{};
+  db.calledUp[p]=true;
   $("newPlayer").value="";
   persist();
   render();
@@ -1191,11 +1227,32 @@ $("addPlayer").onclick=()=>{
 
 $("roster").onclick=e=>{
   if(!isAdmin())return;
+  const convBtn=e.target.closest("[data-toggle-called]");
+  if(convBtn){
+    const idx=+convBtn.dataset.toggleCalled;
+    const player=db.players[idx];
+    if(!player)return;
+    const nextState=!isPlayerCalledUp(player);
+    db.calledUp=db.calledUp||{};
+    db.calledUp[player]=nextState;
+    if(!nextState){
+      if(db.onField.includes(player)){
+        const currentSec=getElapsedSeconds();
+        db.onField=db.onField.filter(x=>x!==player);
+        if(db.running) closePlayerStints([player], currentSec);
+      }
+    }
+    persist();
+    render();
+    return;
+  }
+
   const b=e.target.closest("[data-remove-player]");
   if(!b)return;
   const i=+b.dataset.removePlayer, p=db.players[i];
   if(!confirm("¿Quitar a "+p+" de la plantilla?"))return;
   db.players.splice(i,1);
+  if(db.calledUp) delete db.calledUp[p];
   db.onField=db.onField.filter(x=>x!==p);
   persist();
   render();
