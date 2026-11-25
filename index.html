@@ -1527,3 +1527,35 @@ $("historyList").onclick=e=>{
     render();
     return;
   }
+
+  const b=e.target.closest("[data-edit]");
+  if(!b)return;
+  if(!isAdmin())return;
+  const h=db.history[+b.dataset.edit];
+  const hs=prompt("Nuevo resultado de "+h.home+":",h.hs);
+  if(hs===null)return;
+  const as=prompt("Nuevo resultado de "+h.away+":",h.as);
+  if(as===null)return;
+  const old=h.hs+"-"+h.as;
+  h.hs=Math.max(0,+hs||0);
+  h.as=Math.max(0,+as||0);
+  h.edits=h.edits||[];
+  h.edits.push({date:new Date().toLocaleString("es-ES"),from:old,to:h.hs+"-"+h.as,user:me.email});
+  persist();
+  render();
+};
+
+$("closeDetail").onclick=()=>$("detailModal").classList.add("hidden");
+$("detailModal").onclick=e=>{if(e.target===$("detailModal"))$("detailModal").classList.add("hidden")};
+
+const restoredMe=loadSession();
+if(restoredMe){
+  me=restoredMe;
+  enter();
+}
+connectFirebaseStream();
+ensureTicker();
+render();
+</script>
+</body>
+</html>
