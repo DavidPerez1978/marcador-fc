@@ -533,6 +533,9 @@ let activeView="live";
 const fbUrl=DEFAULT_FB_URL.replace(/\/+$/,"");
 let fbStream=null;
 let isSyncingRemote=false;
+let isPushingFirebase=false;
+let lastLocalMutationAt=0;
+let pushTimer=null;
 let hasLoadedRemote=false;
 
 function saveSession(){
@@ -623,7 +626,8 @@ function isRootMatchState(obj){
 
 function applyRemoteState(remote, forceApply=false){
   if(!isRootMatchState(remote)) return;
-  if(forceApply || !hasLoadedRemote || (remote.updatedAt||0) >= (db.updatedAt||0)){
+  if(!forceApply && (isPushingFirebase || (Date.now() - lastLocalMutationAt) < 900)) return;
+  if(forceApply || !hasLoadedRemote || (remote.updatedAt||0) > (db.updatedAt||0)){
     hasLoadedRemote=true;
     isSyncingRemote=true;
     const nextPhase=remote.phase || "pending";
@@ -645,7 +649,7 @@ function applyRemoteState(remote, forceApply=false){
       homeScore:remote.homeScore ?? 0,
       awayScore:remote.awayScore ?? 0,
       calledUp:mergedCalledUp,
-      onField:Array.isArray(remote.onField)?remote.onField:[],
+      onField:Array.isArray(remote.onField)?remote.onField:db.onField,
       playerMinutes:(remote.playerMinutes && typeof remote.playerMinutes==="object")?remote.playerMinutes:{},
       goals:Array.isArray(remote.goals)?remote.goals:[],
       timeline:Array.isArray(remote.timeline)?remote.timeline:[],
@@ -706,6 +710,7 @@ async function fetchInitialFromFirebase(){
 
 async function pushToFirebase(){
   if(!fbUrl || isSyncingRemote) return;
+  isPushingFirebase=true;
   try{
     setSyncUI("online","Sincronizando...");
     const res=await fetch(fbUrl+"/marcador_fc_state.json",{
@@ -717,6 +722,9 @@ async function pushToFirebase(){
     setSyncUI("online","En vivo");
   }catch(err){
     setSyncUI("error","Error nube");
+  }finally{
+    isPushingFirebase=false;
+    lastLocalMutationAt=Date.now();
   }
 }
 
@@ -755,12 +763,20 @@ function connectFirebaseStream(){
 }
 
 function persist(skipRemote=false){
-  db.updatedAt=Date.now();
+  const now=Date.now();
+  db.updatedAt=now;
+  lastLocalMutationAt=now;
   localStorage.setItem(STORAGE_KEY,JSON.stringify(db));
-  if(!skipRemote && fbUrl) pushToFirebase();
+  if(!skipRemote && fbUrl){
+    if(pushTimer) clearTimeout(pushTimer);
+    pushTimer=setTimeout(()=>{
+      pushTimer=null;
+      pushToFirebase();
+    }, 120);
+  }
 }
 
-function note(t, minuteOverride=null){
+function note(t, minuteOverride=null, shouldPersist=true){
   const minute=minuteOverride===null ? matchMinute() : Number(minuteOverride);
   db.timeline.unshift({
     text:t,
@@ -769,8 +785,10 @@ function note(t, minuteOverride=null){
     minute,
     time:nowTimeStr()
   });
-  persist();
-  render();
+  if(shouldPersist){
+    persist();
+    render();
+  }
 }
 
 function openPlayerStints(players, startSec){
@@ -801,16 +819,18 @@ function getLivePlayerSeconds(player){
   return total;
 }
 
-function clockStart(){
+function clockStart(shouldPersist=true){
   if(db.running)return;
   db.startedAt=Date.now();
   db.running=true;
   openPlayerStints(db.onField, db.baseElapsed||0);
   ensureTicker();
-  persist();
-  render();
+  if(shouldPersist){
+    persist();
+    render();
+  }
 }
-function stopClock(){
+function stopClock(shouldPersist=true){
   if(db.running){
     db.baseElapsed=getElapsedSeconds();
     db.startedAt=null;
@@ -818,7 +838,7 @@ function stopClock(){
     closePlayerStints(db.onField, db.baseElapsed);
   }
   ensureTicker();
-  persist();
+  if(shouldPersist) persist();
 }
 
 function clearActiveMatchData(){
@@ -1157,14 +1177,14 @@ $("startBtn").onclick=()=>{
     if(db.onField.length<5) return alert("Para iniciar el partido debe haber al menos 5 jugadores en el campo.");
     db.phase="playing";
     db.playerMinutes={};
-    note("Comienza el partido. Alineación inicial: "+db.onField.join(", "));
-    clockStart();
+    note("Comienza el partido. Alineación inicial: "+db.onField.join(", "), null, false);
+    clockStart(true);
   }
 };
 
 $("breakBtn").onclick=()=>{
   if(!canEditLive())return;
-  stopClock();
+  stopClock(false);
   db.phase="break";
   note("Comienza el descanso");
   render();
@@ -1178,8 +1198,8 @@ $("secondBtn").onclick=()=>{
   db.baseElapsed=0;
   db.startedAt=null;
   db.phase="playing";
-  note("Comienza la segunda parte. Jugadores que inician: "+db.onField.join(", "));
-  clockStart();
+  note("Comienza la segunda parte. Jugadores que inician: "+db.onField.join(", "), null, false);
+  clockStart(true);
 };
 
 $("finishBtn").onclick=()=>{
@@ -1188,9 +1208,9 @@ $("finishBtn").onclick=()=>{
     ?"El partido está en la primera parte. ¿Seguro que quieres finalizarlo?"
     :"¿Seguro que quieres finalizar el partido?";
   if(!confirm(promptText))return;
-  stopClock();
+  stopClock(false);
   db.phase="finished";
-  note("Finaliza el partido");
+  note("Finaliza el partido", null, false);
 
   const finalPlayerStats={};
   db.players.forEach(p=>{
@@ -1507,35 +1527,3 @@ $("historyList").onclick=e=>{
     render();
     return;
   }
-
-  const b=e.target.closest("[data-edit]");
-  if(!b)return;
-  if(!isAdmin())return;
-  const h=db.history[+b.dataset.edit];
-  const hs=prompt("Nuevo resultado de "+h.home+":",h.hs);
-  if(hs===null)return;
-  const as=prompt("Nuevo resultado de "+h.away+":",h.as);
-  if(as===null)return;
-  const old=h.hs+"-"+h.as;
-  h.hs=Math.max(0,+hs||0);
-  h.as=Math.max(0,+as||0);
-  h.edits=h.edits||[];
-  h.edits.push({date:new Date().toLocaleString("es-ES"),from:old,to:h.hs+"-"+h.as,user:me.email});
-  persist();
-  render();
-};
-
-$("closeDetail").onclick=()=>$("detailModal").classList.add("hidden");
-$("detailModal").onclick=e=>{if(e.target===$("detailModal"))$("detailModal").classList.add("hidden")};
-
-const restoredMe=loadSession();
-if(restoredMe){
-  me=restoredMe;
-  enter();
-}
-connectFirebaseStream();
-ensureTicker();
-render();
-</script>
-</body>
-</html>
