@@ -89,7 +89,7 @@ label{display:block;color:var(--muted);font-size:13px}
 .eye-btn:hover{color:var(--white);transform:translateY(-50%);filter:none}
 .stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .stat-card{background:#0d0f12;border:1px solid var(--line);border-radius:13px;padding:14px}
-.stat-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #1e2127;font-size:14px}
+.stat-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #1e2127;font-size:14px;gap:10px}
 .stat-row:last-child{border-bottom:0}
 .sync-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);margin-right:5px}
 .sync-dot.online{background:var(--green);box-shadow:0 0 8px var(--green)}
@@ -364,6 +364,19 @@ label{display:block;color:var(--muted);font-size:13px}
         <p class="hint">Datos calculados a partir de todos los partidos finalizados en el historial.</p>
         <div class="stats-grid" id="seasonStats"></div>
       </div>
+      <div class="card">
+        <div class="row" style="justify-content:space-between;margin-bottom:12px">
+          <div>
+            <h2 style="margin:0">Registro de conexiones</h2>
+            <p class="hint" style="margin:4px 0 0">Quién se ha conectado, su rol y la hora de cada acceso.</p>
+          </div>
+          <span class="pill" id="connectionsCount" style="flex:0 0 auto">0 conexiones</span>
+        </div>
+        <div id="connectionStats"></div>
+        <div class="footer-actions">
+          <button id="clearConnectionsBtn" class="danger sm">Limpiar registro de conexiones</button>
+        </div>
+      </div>
     </section>
   </section>
 </main>
@@ -442,7 +455,8 @@ function normalizeRole(role){
   return "viewer";
 }
 
-function roleLabel(role){
+function roleLabel(role, isGuest=false){
+  if(isGuest) return "INVITADO";
   const r=normalizeRole(role);
   if(r==="admin") return "ADMINISTRADOR";
   if(r==="narrador") return "NARRADOR";
@@ -452,6 +466,7 @@ function roleLabel(role){
 let db={
   users:[getMainAdminUser()],
   requests:[],
+  connections:[],
   home:"Nuestro equipo",
   players:["Jugador 1","Jugador 2","Jugador 3","Jugador 4","Jugador 5"],
   calledUp:{},
@@ -522,6 +537,7 @@ try{
   if(saved){
     db={...db,...saved};
     db.users=normalizeUsers(db.users);
+    db.connections=Array.isArray(saved.connections)?saved.connections:[];
     syncCalledUpWithPlayers();
     if(typeof saved.elapsed==="number" && saved.baseElapsed===undefined) db.baseElapsed=saved.elapsed;
   }
@@ -580,8 +596,24 @@ function splitPlayerLabel(label){
   return {num:"", name:str};
 }
 function nowTimeStr(){return new Date().toLocaleTimeString("es-ES",{hour:"2-digit",minute:"2-digit"})}
+function nowDateTimeStr(){return new Date().toLocaleString("es-ES",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit"})}
 function isAdmin(){return Boolean(me && normalizeRole(me.role)==="admin")}
 function canEditLive(){return Boolean(me && ["admin","narrador"].includes(normalizeRole(me.role)))}
+
+function recordConnection(){
+  if(!me) return;
+  const label=me.isGuest ? "Invitado" : fallbackUserName(me.email, me.name);
+  const detail=(!me.isGuest && me.email && me.email.toLowerCase()!==label.toLowerCase()) ? me.email : "";
+  db.connections=Array.isArray(db.connections)?db.connections:[];
+  db.connections.unshift({
+    name:label,
+    detail,
+    role:roleLabel(me.role, Boolean(me.isGuest)),
+    at:nowDateTimeStr()
+  });
+  if(db.connections.length>100) db.connections=db.connections.slice(0,100);
+  persist();
+}
 
 function getElapsedSeconds(){
   if(db.running && db.startedAt){
@@ -653,7 +685,8 @@ function applyRemoteState(remote, forceApply=false){
       playerMinutes:(remote.playerMinutes && typeof remote.playerMinutes==="object")?remote.playerMinutes:{},
       goals:Array.isArray(remote.goals)?remote.goals:[],
       timeline:Array.isArray(remote.timeline)?remote.timeline:[],
-      history:Array.isArray(remote.history)?remote.history:[]
+      history:Array.isArray(remote.history)?remote.history:[],
+      connections:Array.isArray(remote.connections)?remote.connections:(Array.isArray(db.connections)?db.connections:[])
     };
     if(isClearedState){
       db.baseElapsed=0;
@@ -892,7 +925,7 @@ $("guestBtn").onclick=async ()=>{
     role:"viewer",
     approved:true
   };
-  enter();
+  enter(true);
   await fetchInitialFromFirebase();
 };
 
@@ -906,7 +939,7 @@ $("loginBtn").onclick=async ()=>{
     db.users=normalizeUsers(db.users);
     const root=db.users.find(u=>isMainAdminAccount(u)) || getMainAdminUser();
     me={...root, name:rawInput};
-    enter();
+    enter(true);
     return;
   }
 
@@ -917,7 +950,7 @@ $("loginBtn").onclick=async ()=>{
   }
   if(!u) return authMsg("Usuario, correo electrónico o contraseña incorrectos, o cuenta pendiente de aprobación.",true);
   me={...u, role:normalizeRole(u.role)};
-  enter();
+  enter(true);
 };
 
 $("requestBtn").onclick=()=>{
@@ -952,7 +985,7 @@ function applyRoleUI(){
   const admin=isAdmin();
   const liveEditor=canEditLive();
   $("who").textContent=me.isGuest ? "Invitado" : fallbackUserName(me.email, me.name);
-  $("rolePill").textContent=roleLabel(me.role);
+  $("rolePill").textContent=roleLabel(me.role, Boolean(me.isGuest));
   document.querySelectorAll(".admin-only:not([id^='view-'])").forEach(el=>el.classList.toggle("hidden",!admin));
   document.querySelectorAll(".live-editor-only").forEach(el=>el.classList.toggle("hidden",!liveEditor));
   if(!admin && ["setup","users","stats"].includes(activeView)){
@@ -960,8 +993,9 @@ function applyRoleUI(){
   }
 }
 
-function enter(){
+function enter(isFreshLogin=false){
   saveSession();
+  if(isFreshLogin) recordConnection();
   $("auth").classList.add("hidden");
   $("app").classList.remove("hidden");
   $("logout").classList.remove("hidden");
@@ -1075,6 +1109,7 @@ function render(){
   if(isAdmin()){
     renderLiveStats();
     renderSeasonStats();
+    renderConnectionStats();
   }
 
   $("requests").innerHTML=db.requests.length?db.requests.map((r,i)=>
@@ -1168,6 +1203,49 @@ function renderSeasonStats(){
     (topPlayers.length?topPlayers.map(x=>'<div class="stat-row"><span>'+esc(x.name)+'</span><b>'+x.matches+' PJ · '+x.mins+'\'</b></div>').join(""):'<span class="muted" style="font-size:13px">Sin registros de participación aún.</span>')+
     '</div>';
 }
+
+function renderConnectionStats(){
+  const list=Array.isArray(db.connections)?db.connections:[];
+  if($("connectionsCount")){
+    $("connectionsCount").textContent=list.length+(list.length===1?" conexión":" conexiones");
+  }
+  const byRole={};
+  list.forEach(c=>{
+    const r=c.role||"USUARIO";
+    byRole[r]=(byRole[r]||0)+1;
+  });
+  const summaryRows=Object.entries(byRole).map(([role,count])=>
+    '<div class="stat-row"><span>'+esc(role)+'</span><b>'+count+'</b></div>'
+  ).join("");
+
+  const recentHtml=list.length
+    ? list.slice(0,30).map(c=>
+        '<div class="stat-row">'+
+          '<span><b>'+esc(c.name||"Usuario")+'</b> <span class="pill gray">'+esc(c.role||"USUARIO")+'</span>'+(c.detail?'<br><small class="muted">'+esc(c.detail)+'</small>':'')+'</span>'+
+          '<small class="muted" style="white-space:nowrap">'+esc(c.at||"")+'</small>'+
+        '</div>'
+      ).join("")
+    : '<span class="muted" style="font-size:13px">Todavía no hay conexiones registradas.</span>';
+
+  $("connectionStats").innerHTML=
+    '<div class="stats-grid">'+
+      '<div class="stat-card"><h3>👥 Total y por rol</h3>'+
+        '<div class="stat-row"><span>Total de conexiones</span><b>'+list.length+'</b></div>'+
+        (summaryRows||'<span class="muted" style="font-size:13px">Sin datos aún.</span>')+
+      '</div>'+
+      '<div class="stat-card"><h3>🕒 Últimas conexiones</h3>'+
+        recentHtml+
+      '</div>'+
+    '</div>';
+}
+
+$("clearConnectionsBtn").onclick=()=>{
+  if(!isAdmin())return;
+  if(!confirm("¿Seguro que quieres borrar el registro de conexiones?"))return;
+  db.connections=[];
+  persist();
+  render();
+};
 
 // ACCIONES DEL PARTIDO
 $("startBtn").onclick=()=>{
@@ -1551,7 +1629,7 @@ $("detailModal").onclick=e=>{if(e.target===$("detailModal"))$("detailModal").cla
 const restoredMe=loadSession();
 if(restoredMe){
   me=restoredMe;
-  enter();
+  enter(false);
 }
 connectFirebaseStream();
 ensureTicker();
